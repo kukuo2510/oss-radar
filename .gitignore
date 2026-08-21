@@ -5,3 +5,4 @@ data/*.db
 data/*.html
 data/*.log
 .env
+*.local.md

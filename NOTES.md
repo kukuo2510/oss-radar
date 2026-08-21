@@ -69,6 +69,27 @@ embedding model 來改善。
 只借用視覺/互動概念（奏摺印章式的核准/駁回操作），沒有參考或複製對方的程式碼——技術棧完全不同
 （對方是 Kotlin/Jetpack Compose 的 Android app，這裡是 React/Vite 的網頁 PWA）。
 
+### 從 labs-ArchiveAssistant 看到值得參考的設計（尚未實作，先記錄）
+
+看過對方原始碼結構後，幾個概念層面（不是程式碼）值得之後參考：
+
+1. **用 interface 把「本地 vs 遠端」AI 抽象掉**：對方有 `SmartSummarizer` interface，底下分別是
+   `LocalLlmSmartSummarizer`（本地模型）跟 `RemoteApiSmartSummarizer`（遠端 API），呼叫端不用管背後是
+   哪一種。我們的 `embed.load_model()` 目前是寫死 fastembed 本地模型，之後如果想讓 embedding
+   可以切換「本地 vs 付費 API」，可以參考這個抽象方式。
+2. **Mock 版本方便測試/demo**：對方有 `MockKnowledgeClassifier`，不用接真的 AI 就能跑起來看效果。
+   我們現在測試都是直接打真實 API，之後如果要寫自動化測試，這種 mock 版本的習慣值得學。
+3. **AI 端點延遲測試工具**：`AiEndpointLatencyTester`，讓使用者自己測試設定的 AI 服務端點反應多快。
+   如果之後讓使用者自訂 embedding/AI API，這種「先幫使用者測速」的體驗值得參考。
+4. **效能教訓**：對方用 Canvas 級手繪動畫做真實折頁翻頁效果（`MemorialFoldView` 等一整組檔案），
+   README 也誠實承認滑動翻頁效能不夠跟手。我們用純 CSS 做滑卡片，效能上反而佔了便宜——這驗證了
+   選輕量做法（不追求 1:1 還原實體翻頁手感）是對的取捨，之後如果想加更擬真的翻頁動畫，要先想清楚
+   這個效能代價。
+5. **誠實記錄已知限制**：對方 README 把「尚未完成與已知問題」當成目前實作狀態的一部分寫在最前面，
+   不是補充說明——這跟我們在 NOTES.md 一直在做的事情是同一種精神，算是互相驗證這是個好習慣。
+
+這些都還沒動手做，只是先記下來，之後有需要再回來實作。
+
 ## 部署踩過的坑（Render 免費方案）
 
 1. **一次 request 跑完整條 pipeline 直接 OOM**：一開始是單一個 `/admin/run-pipeline` 端點，一次 HTTP

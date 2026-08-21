@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import feedparser
 import requests
 
-from db import init_db, upsert_papers
+from db import init_db, upsert_items
 
 ARXIV_API_URL = "http://export.arxiv.org/api/query"
 
@@ -26,32 +26,36 @@ def fetch_arxiv(category: str, max_results: int = 50) -> list[dict]:
     feed = feedparser.parse(resp.text)
     fetched_at = datetime.now(timezone.utc).isoformat()
 
-    papers = []
+    items = []
     for entry in feed.entries:
         arxiv_id = entry.id.split("/abs/")[-1]
-        papers.append(
+        items.append(
             {
-                "arxiv_id": arxiv_id,
+                "source": "arxiv",
+                "source_id": arxiv_id,
                 "title": " ".join(entry.title.split()),
-                "abstract": " ".join(entry.summary.split()),
-                "authors": ", ".join(a.name for a in entry.authors),
-                "category": category,
-                "published_at": entry.published,
+                "description": " ".join(entry.summary.split()),
                 "url": entry.link,
+                "author": ", ".join(a.name for a in entry.authors),
+                "category": category,
+                "metric": None,  # arXiv has no built-in popularity signal
+                "published_at": entry.published,
                 "fetched_at": fetched_at,
             }
         )
-    return papers
+    return items
 
 
 def main() -> None:
     init_db()
     total_new = 0
     for category in DEFAULT_CATEGORIES:
-        papers = fetch_arxiv(category)
-        new_count = upsert_papers(papers)
+        items = fetch_arxiv(category)
+        new_count = upsert_items(items)
+        # No record_snapshots here: arXiv items have no popularity metric to
+        # track over time (metric=None), unlike GitHub stars / HF downloads.
         total_new += new_count
-        print(f"[{category}] fetched {len(papers)}, {new_count} new")
+        print(f"[{category}] fetched {len(items)}, {new_count} new")
     print(f"Done. {total_new} new papers stored.")
 
 

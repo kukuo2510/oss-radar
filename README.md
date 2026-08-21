@@ -125,7 +125,7 @@ python -m uvicorn api:app --reload
 | `GET /recommendations` | 個人化推薦（`recommend.py` 的結果）|
 | `GET /search?q=...` | 跨來源語意搜尋（即時 embed 查詢字串，跟全部 item 算 cosine similarity）|
 | `POST /interactions` | 記錄按讚/略過，body: `{"source", "source_id", "action"}` |
-| `POST /admin/run-pipeline` | 跑完整 pipeline（三來源 ingestion + embed + classify + trend），需要 `X-Admin-Token` header 對上 `ADMIN_TOKEN` 環境變數；沒設定 `ADMIN_TOKEN` 時整個端點回 503。給外部排程（見「部署」）呼叫用，不是給前端用的 |
+| `POST /admin/run-step/{step}` | 跑 pipeline 的其中一步（`arxiv`/`github`/`huggingface`/`embed`/`classify`/`trend` 之一），需要 `X-Admin-Token` header 對上 `ADMIN_TOKEN` 環境變數；沒設定 `ADMIN_TOKEN` 時整個端點回 503。給外部排程（見「部署」）呼叫用，不是給前端用的。刻意設計成一次只跑一步，見下方部署章節的說明 |
 
 這一層存在的原因：app 是瀏覽器/手機端，沒辦法像 `report.py` 那樣直接開 SQLite 檔案，所有邏輯都要透過
 HTTP 暴露出去。API 本身不做任何新邏輯，純粹包裝已經寫好的 `ingest_*` / `embed` / `classify` / `trend` /
@@ -211,7 +211,13 @@ PLAN.md 就已經標註是「之後視需要」的選項，不是新問題。
 ### 3. 排程：GitHub Actions
 
 [`.github/workflows/daily-pipeline.yml`](./.github/workflows/daily-pipeline.yml) 已經寫好，每天 UTC 02:00
-（台灣時間早上 10 點）呼叫一次 `/admin/run-pipeline`。要啟用：
+（台灣時間早上 10 點）依序呼叫 6 次 `/admin/run-step/{step}`（`arxiv` → `github` → `huggingface` →
+`embed` → `classify` → `trend`），一次一步，不是一次呼叫跑完全部。
+
+**這個設計是真的踩過坑才改的**：一開始是單一個 `/admin/run-pipeline` 端點，一次 HTTP request 內把 6
+步驟全部跑完，結果部署到 Render 免費方案（512MB RAM）時直接把 instance 跑到 OOM 當機（`embed.py` 跟
+`classify.py` 各自都會載入一份 embedding 模型，疊在同一個 request 裡記憶體不夠用）。拆成 6 次獨立呼叫後，
+每次呼叫結束後 process 有機會釋放記憶體，尖峰用量只會是單一步驟需要的量，不會疊加。要啟用：
 
 1. GitHub repo → Settings → Secrets and variables → Actions，新增兩個 secret：
    - `API_BASE_URL`：Render 後端網址（不要有結尾斜線），例如 `https://oss-radar-api.onrender.com`

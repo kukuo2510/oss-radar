@@ -6,6 +6,7 @@ embed, classify, trend, recommend) already does the real work; this module just
 wraps their outputs and DB reads as HTTP endpoints.
 """
 
+import gc
 import os
 from typing import Optional
 
@@ -145,35 +146,41 @@ def create_interaction(payload: InteractionIn):
     return {"status": "ok"}
 
 
-@app.post("/admin/run-pipeline")
-def run_pipeline(x_admin_token: Optional[str] = Header(default=None)):
-    """Runs the full daily pipeline (ingest all sources -> embed -> classify -> trend)
-    synchronously and returns when done. This exists because free-tier hosting
-    (Render, etc.) doesn't include a cron feature - the plan is to have an external
-    free scheduler (a GitHub Actions scheduled workflow) call this endpoint once a
-    day instead of running an in-process APScheduler like scheduler.py does locally.
+PIPELINE_STEPS = {
+    "arxiv": ingest_arxiv.main,
+    "github": ingest_github.main,
+    "huggingface": ingest_hf.main,
+    "embed": embed_module.main,
+    "classify": classify.main,
+    "trend": trend.main,
+}
 
-    Calls each module's main() directly (not scheduler.py's run_* wrappers, which
-    swallow exceptions for local logging) so a real failure surfaces in the response
-    instead of silently reporting "ok"."""
+
+@app.post("/admin/run-step/{step}")
+def run_step(step: str, x_admin_token: Optional[str] = Header(default=None)):
+    """Runs exactly one pipeline step and returns. This exists because free-tier
+    hosting (Render, etc.) doesn't include a cron feature - the plan is an external
+    free scheduler (a GitHub Actions workflow) calling this once per step, once a
+    day, instead of running an in-process APScheduler like scheduler.py does locally.
+
+    One step per request is deliberate, not just for simplicity: running all 6 steps
+    back-to-back inside a single request OOM'd a 512MB Render free instance (embed
+    and classify each load their own copy of the embedding model, and the process
+    never got a chance to release memory between steps within one request). Splitting
+    into separate requests bounds peak memory to whatever a single step needs, and
+    gc.collect() below gives the interpreter an extra nudge to release it before the
+    next request comes in."""
     if not ADMIN_TOKEN:
         raise HTTPException(503, "admin pipeline not configured (ADMIN_TOKEN unset)")
     if x_admin_token != ADMIN_TOKEN:
         raise HTTPException(401, "invalid admin token")
+    if step not in PIPELINE_STEPS:
+        raise HTTPException(404, f"unknown step {step!r}, expected one of {list(PIPELINE_STEPS)}")
 
-    steps = [
-        ("arxiv", ingest_arxiv.main),
-        ("github", ingest_github.main),
-        ("huggingface", ingest_hf.main),
-        ("embed", embed_module.main),
-        ("classify", classify.main),
-        ("trend", trend.main),
-    ]
-    results = {}
-    for name, fn in steps:
-        try:
-            fn()
-            results[name] = "ok"
-        except Exception as e:  # noqa: BLE001 - report every step's outcome, don't let one abort the rest
-            results[name] = f"failed: {e}"
-    return results
+    try:
+        PIPELINE_STEPS[step]()
+    except Exception as e:
+        raise HTTPException(500, f"{step} failed: {e}")
+    finally:
+        gc.collect()
+    return {"step": step, "status": "ok"}

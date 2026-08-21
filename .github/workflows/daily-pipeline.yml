@@ -2,7 +2,14 @@ name: Daily data pipeline
 
 # Render's free plan has no cron feature, so this is the scheduler in production:
 # a free GitHub Actions workflow calling the deployed API's protected admin
-# endpoint once a day. Locally, src/scheduler.py does the equivalent job in-process.
+# endpoint once a day, one pipeline step per call. Locally, src/scheduler.py does
+# the equivalent job in-process.
+#
+# One step per HTTP call (not one call that runs everything) is deliberate: a
+# single request running all 6 steps back-to-back OOM'd a 512MB Render free
+# instance. Splitting into separate requests keeps each one's peak memory bounded
+# to whatever that single step needs, since the process gets a chance to release
+# memory between requests.
 
 on:
   schedule:
@@ -13,8 +20,12 @@ jobs:
   trigger-pipeline:
     runs-on: ubuntu-latest
     steps:
-      - name: Call /admin/run-pipeline
+      - name: Run each pipeline step in order
         run: |
-          curl -sf -X POST "${{ secrets.API_BASE_URL }}/admin/run-pipeline" \
-            -H "X-Admin-Token: ${{ secrets.ADMIN_TOKEN }}" \
-            --max-time 600
+          for step in arxiv github huggingface embed classify trend; do
+            echo "=== running step: $step ==="
+            curl -sf -X POST "${{ secrets.API_BASE_URL }}/admin/run-step/$step" \
+              -H "X-Admin-Token: ${{ secrets.ADMIN_TOKEN }}" \
+              --max-time 300
+            echo
+          done

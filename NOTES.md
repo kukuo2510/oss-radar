@@ -58,6 +58,17 @@ embedding model 來改善。
 滑卡片手勢自己用 pointer events 寫（`ForYou.jsx`），沒裝手勢函式庫——這個互動夠簡單，加套件的成本
 大於自己寫。Service worker 只快取 app shell，刻意不快取 API 回應，因為這個 app 的價值就是新鮮資料。
 
+### 「奏摺」主題的靈感來源
+
+視覺與文案主題（泛黃宣紙、硃砂紅、恩准/駁回印章式互動）參考自：
+
+- 影片：[打造AI三省六部！批電子奏摺，當賽博皇帝！](https://youtu.be/HCj3y0eWMzI)
+- 對應開源專案：[LYiHub/labs-ArchiveAssistant](https://github.com/LYiHub/labs-ArchiveAssistant)（「聚合拾遺」，
+  Android 個人資料歸檔 app，用「六部」固定分類 + 折頁式奏摺閱讀/審閱介面，GPL-3.0-or-later 授權）
+
+只借用視覺/互動概念（奏摺印章式的核准/駁回操作），沒有參考或複製對方的程式碼——技術棧完全不同
+（對方是 Kotlin/Jetpack Compose 的 Android app，這裡是 React/Vite 的網頁 PWA）。
+
 ## 部署踩過的坑（Render 免費方案）
 
 1. **一次 request 跑完整條 pipeline 直接 OOM**：一開始是單一個 `/admin/run-pipeline` 端點，一次 HTTP

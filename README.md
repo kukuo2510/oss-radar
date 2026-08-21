@@ -7,7 +7,8 @@
 
 **上線網址**：
 - App：https://oss-radar-theta.vercel.app
-- API：https://oss-radar-api.onrender.com（互動文件在 `/docs`）
+- API：https://oss-radar-api.onrender.com
+（互動文件在 `/docs`）
 
 ## 架構
 

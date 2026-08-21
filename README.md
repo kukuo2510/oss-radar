@@ -225,7 +225,8 @@ PLAN.md 就已經標註是「之後視需要」的選項，不是新問題。
    `threads` 限制成 1（見 `src/embed.py`）。
 3. 記憶體問題解決後，`embed` 這步換成因為 Render 免費方案 CPU 只有 **0.15 顆核心**，一次跑完 300 多筆
    資料的 embedding 直接跑到超過合理的 request timeout。最後的解法是讓 `embed.py` 每次呼叫最多只處理
-   60 筆（`MAX_ITEMS_PER_RUN`），回傳「還剩幾筆沒處理」，GitHub Actions 那邊改成迴圈呼叫直到清空。
+   15 筆（`MAX_ITEMS_PER_RUN`，實際數字是部署後量出來的，不是猜的），回傳「還剩幾筆沒處理」，GitHub
+   Actions 那邊改成迴圈呼叫直到清空。
 
 要啟用：
 

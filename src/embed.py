@@ -20,7 +20,7 @@ BATCH_SIZE = 8
 # caller (the admin endpoint, called repeatedly by GitHub Actions - see README's
 # "部署" section) just calls this in a loop until nothing's left, instead of one
 # request having to finish the whole backlog.
-MAX_ITEMS_PER_RUN = 60
+MAX_ITEMS_PER_RUN = 15
 # Every knob here exists for one reason: a 512MB Render free instance kept OOM-ing
 # on this model. threads=1 caps onnxruntime's intra-op thread pool (its default -
 # one thread per CPU core, each with its own buffers - was the first thing that

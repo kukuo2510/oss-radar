@@ -13,7 +13,7 @@ name: Daily data pipeline
 #
 # embed is called in a loop, not once: Render's free plan is also capped at 0.15
 # vCPU, so embedding the entire backlog in one request can run past any reasonable
-# timeout well before it runs out of memory. embed.py caps itself to ~60 items per
+# timeout well before it runs out of memory. embed.py caps itself to ~15 items per
 # call and reports how many are still pending; this loop just keeps calling until
 # that hits 0 (or a safety cap, in case something's stuck).
 
@@ -38,7 +38,7 @@ jobs:
 
       - name: Embed (looped until backlog is drained)
         run: |
-          for i in $(seq 1 15); do
+          for i in $(seq 1 40); do
             echo "=== embed pass $i ==="
             response=$(curl -sf -X POST "${{ secrets.API_BASE_URL }}/admin/run-step/embed" \
               -H "X-Admin-Token: ${{ secrets.ADMIN_TOKEN }}" \

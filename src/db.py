@@ -184,3 +184,63 @@ def get_latest_interactions() -> dict:
             """
         ).fetchall()
         return {(source, source_id): action for source, source_id, action in rows}
+
+
+def get_item(source: str, source_id: str) -> dict | None:
+    with get_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM items WHERE source = ? AND source_id = ?", (source, source_id)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_items(source: str | None = None, tag: str | None = None, limit: int = 50, offset: int = 0) -> list[dict]:
+    query = "SELECT DISTINCT items.* FROM items"
+    params: list = []
+    where = []
+    if tag:
+        query += " JOIN item_tags ON items.source = item_tags.source AND items.source_id = item_tags.source_id"
+        where.append("item_tags.tag = ?")
+        params.append(tag)
+    if source:
+        where.append("items.source = ?")
+        params.append(source)
+    if where:
+        query += " WHERE " + " AND ".join(where)
+    query += " ORDER BY items.published_at DESC LIMIT ? OFFSET ?"
+    params += [limit, offset]
+
+    with get_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_item_tags(source: str, source_id: str) -> list[dict]:
+    with get_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT tag, score FROM item_tags WHERE source = ? AND source_id = ? ORDER BY score DESC",
+            (source, source_id),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_tags_with_counts() -> list[dict]:
+    with get_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT tag, COUNT(*) as count FROM item_tags GROUP BY tag ORDER BY count DESC"
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_top_trend_scores(limit: int = 20) -> list[dict]:
+    with get_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT source, source_id, score, basis FROM trend_scores ORDER BY score DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(row) for row in rows]

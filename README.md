@@ -16,7 +16,7 @@
 - [x] 趨勢分數（`src/trend.py`，依 star/download 成長率，冷啟動時退回百分位排名）
 - [x] 簡易本地 HTML 報表（`src/report.py`，開發用，非正式 app UI）
 - [x] 個人化推薦（`src/recommend.py` + `src/interact.py` 手動標記工具）
-- [ ] API（FastAPI）
+- [x] API（`src/api.py`，FastAPI）
 - [ ] 前端（PWA）
 
 ## 架構
@@ -106,6 +106,36 @@ python recommend.py
 已用真實資料驗證過：標記幾筆 LLM/Agent 相關論文與 repo 為讚、機器人相關為略過後，
 推薦結果確實都帶有 "Large Language Models" 或 "AI Agents & Tool Use" 標籤，符合預期。
 
+### API
+
+```bash
+cd src
+python -m uvicorn api:app --reload
+```
+
+啟動後預設在 `http://127.0.0.1:8000`，互動式文件在 `/docs`（FastAPI 內建，Swagger UI）。
+
+| 端點 | 說明 |
+|---|---|
+| `GET /items` | 列表，可用 `source`、`tag`、`limit`、`offset` 過濾/分頁 |
+| `GET /items/{source}/{source_id}` | 單筆詳細資料（含標籤）|
+| `GET /tags` | 各主題標籤與數量，給前端做分類 tab |
+| `GET /trending` | 趨勢排行（`trend.py` 的結果）|
+| `GET /recommendations` | 個人化推薦（`recommend.py` 的結果）|
+| `GET /search?q=...` | 跨來源語意搜尋（即時 embed 查詢字串，跟全部 item 算 cosine similarity）|
+| `POST /interactions` | 記錄按讚/略過，body: `{"source", "source_id", "action"}` |
+
+這一層存在的原因：app 是瀏覽器/手機端，沒辦法像 `report.py` 那樣直接開 SQLite 檔案，所有邏輯都要透過
+HTTP 暴露出去。API 本身不做任何新邏輯，純粹包裝已經寫好的 `ingest_*` / `embed` / `classify` / `trend` /
+`recommend` 模組。
+
+語意搜尋目前是即時把全部 item 的 embedding 讀進記憶體算 cosine similarity（線性掃描），資料量還很小
+（幾百筆）完全夠用；之後資料量大到某個程度，才需要換成向量資料庫（pgvector/Chroma）做索引，現階段換
+反而是過度設計。
+
+已用真實 HTTP request 驗證過全部端點（`/items`、`/trending`、`/recommendations`、`/search`、
+`POST /interactions`、含斜線的 `source_id` 路由）都正常運作。
+
 ### 本地報表（開發用）
 
 ```bash
@@ -129,4 +159,5 @@ python report.py   # 產生 data/report.html，看目前資料狀態、分類分
 - requests / feedparser
 - APScheduler（排程）
 - fastembed（ONNX runtime，BAAI/bge-small-en-v1.5 embedding）
-- （規劃中）FastAPI、趨勢分數、個人化推薦、PWA 前端
+- FastAPI + uvicorn
+- （規劃中）PWA 前端

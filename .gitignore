@@ -3,4 +3,5 @@ __pycache__/
 *.pyc
 data/*.db
 data/*.html
+data/*.log
 .env

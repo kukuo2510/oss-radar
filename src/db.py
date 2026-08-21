@@ -24,6 +24,25 @@ CREATE TABLE IF NOT EXISTS metric_snapshots (
     metric      INTEGER NOT NULL,
     snapshot_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS embeddings (
+    source     TEXT NOT NULL,
+    source_id  TEXT NOT NULL,
+    model      TEXT NOT NULL,
+    vector     BLOB NOT NULL,
+    dim        INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (source, source_id)
+);
+
+CREATE TABLE IF NOT EXISTS item_tags (
+    source     TEXT NOT NULL,
+    source_id  TEXT NOT NULL,
+    tag        TEXT NOT NULL,
+    score      REAL NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (source, source_id, tag)
+);
 """
 
 
@@ -62,4 +81,50 @@ def record_snapshots(items: list[dict]) -> None:
             VALUES (:source, :source_id, :metric, :fetched_at)
             """,
             items,
+        )
+
+
+def get_items_missing_embeddings() -> list[dict]:
+    with get_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT items.source, items.source_id, items.title, items.description
+            FROM items
+            LEFT JOIN embeddings
+                ON items.source = embeddings.source AND items.source_id = embeddings.source_id
+            WHERE embeddings.source_id IS NULL
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def upsert_embeddings(rows: list[dict]) -> None:
+    """Each row: source, source_id, model, vector (bytes), dim, created_at."""
+    with get_connection() as conn:
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO embeddings (source, source_id, model, vector, dim, created_at)
+            VALUES (:source, :source_id, :model, :vector, :dim, :created_at)
+            """,
+            rows,
+        )
+
+
+def get_all_embeddings() -> list[dict]:
+    with get_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT source, source_id, vector, dim FROM embeddings").fetchall()
+        return [dict(row) for row in rows]
+
+
+def upsert_tags(rows: list[dict]) -> None:
+    """Each row: source, source_id, tag, score, created_at."""
+    with get_connection() as conn:
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO item_tags (source, source_id, tag, score, created_at)
+            VALUES (:source, :source_id, :tag, :score, :created_at)
+            """,
+            rows,
         )

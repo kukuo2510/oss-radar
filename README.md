@@ -214,10 +214,20 @@ PLAN.md 就已經標註是「之後視需要」的選項，不是新問題。
 （台灣時間早上 10 點）依序呼叫 6 次 `/admin/run-step/{step}`（`arxiv` → `github` → `huggingface` →
 `embed` → `classify` → `trend`），一次一步，不是一次呼叫跑完全部。
 
-**這個設計是真的踩過坑才改的**：一開始是單一個 `/admin/run-pipeline` 端點，一次 HTTP request 內把 6
-步驟全部跑完，結果部署到 Render 免費方案（512MB RAM）時直接把 instance 跑到 OOM 當機（`embed.py` 跟
-`classify.py` 各自都會載入一份 embedding 模型，疊在同一個 request 裡記憶體不夠用）。拆成 6 次獨立呼叫後，
-每次呼叫結束後 process 有機會釋放記憶體，尖峰用量只會是單一步驟需要的量，不會疊加。要啟用：
+**這個設計是真的踩過坑才改的，而且踩了不只一次**：
+
+1. 一開始是單一個 `/admin/run-pipeline` 端點，一次 HTTP request 內把 6 步驟全部跑完，結果部署到 Render
+   免費方案（512MB RAM）時直接把 instance 跑到 OOM 當機（`embed.py` 跟 `classify.py` 各自都會載入一份
+   embedding 模型，疊在同一個 request 裡記憶體不夠用）。拆成 6 次獨立呼叫，每次呼叫結束後 process 有
+   機會釋放記憶體。
+2. 拆開之後，單獨跑 `embed` 這步還是 OOM——问題不是疊加，是 onnxruntime 預設的記憶體 arena（一種預先
+   配置的記憶體池）本身就超過免費方案能給的量。改成 `enable_cpu_mem_arena=0` 關掉這個機制，並把
+   `threads` 限制成 1（見 `src/embed.py`）。
+3. 記憶體問題解決後，`embed` 這步換成因為 Render 免費方案 CPU 只有 **0.15 顆核心**，一次跑完 300 多筆
+   資料的 embedding 直接跑到超過合理的 request timeout。最後的解法是讓 `embed.py` 每次呼叫最多只處理
+   60 筆（`MAX_ITEMS_PER_RUN`），回傳「還剩幾筆沒處理」，GitHub Actions 那邊改成迴圈呼叫直到清空。
+
+要啟用：
 
 1. GitHub repo → Settings → Secrets and variables → Actions，新增兩個 secret：
    - `API_BASE_URL`：Render 後端網址（不要有結尾斜線），例如 `https://oss-radar-api.onrender.com`

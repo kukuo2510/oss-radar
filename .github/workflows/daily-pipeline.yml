@@ -10,6 +10,12 @@ name: Daily data pipeline
 # instance. Splitting into separate requests keeps each one's peak memory bounded
 # to whatever that single step needs, since the process gets a chance to release
 # memory between requests.
+#
+# embed is called in a loop, not once: Render's free plan is also capped at 0.15
+# vCPU, so embedding the entire backlog in one request can run past any reasonable
+# timeout well before it runs out of memory. embed.py caps itself to ~60 items per
+# call and reports how many are still pending; this loop just keeps calling until
+# that hits 0 (or a safety cap, in case something's stuck).
 
 on:
   schedule:
@@ -20,12 +26,37 @@ jobs:
   trigger-pipeline:
     runs-on: ubuntu-latest
     steps:
-      - name: Run each pipeline step in order
+      - name: Ingest all sources
         run: |
-          for step in arxiv github huggingface embed classify trend; do
+          for step in arxiv github huggingface; do
             echo "=== running step: $step ==="
             curl -sf -X POST "${{ secrets.API_BASE_URL }}/admin/run-step/$step" \
               -H "X-Admin-Token: ${{ secrets.ADMIN_TOKEN }}" \
-              --max-time 300
+              --max-time 250
+            echo
+          done
+
+      - name: Embed (looped until backlog is drained)
+        run: |
+          for i in $(seq 1 15); do
+            echo "=== embed pass $i ==="
+            response=$(curl -sf -X POST "${{ secrets.API_BASE_URL }}/admin/run-step/embed" \
+              -H "X-Admin-Token: ${{ secrets.ADMIN_TOKEN }}" \
+              --max-time 250)
+            echo "$response"
+            remaining=$(echo "$response" | jq -r '.remaining // 0')
+            if [ "$remaining" -eq 0 ]; then
+              echo "embedding backlog drained"
+              break
+            fi
+          done
+
+      - name: Classify and score trend
+        run: |
+          for step in classify trend; do
+            echo "=== running step: $step ==="
+            curl -sf -X POST "${{ secrets.API_BASE_URL }}/admin/run-step/$step" \
+              -H "X-Admin-Token: ${{ secrets.ADMIN_TOKEN }}" \
+              --max-time 250
             echo
           done

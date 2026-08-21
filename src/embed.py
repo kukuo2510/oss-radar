@@ -13,7 +13,14 @@ from fastembed import TextEmbedding
 from db import get_items_missing_embeddings, init_db, upsert_embeddings
 
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
-BATCH_SIZE = 1
+BATCH_SIZE = 8
+# Caps how many items one main() call embeds. On a CPU-throttled host (Render free
+# is 0.15 vCPU) embedding everything in one HTTP request can run past any
+# reasonable request timeout well before it OOMs. Bounding it per call means the
+# caller (the admin endpoint, called repeatedly by GitHub Actions - see README's
+# "部署" section) just calls this in a loop until nothing's left, instead of one
+# request having to finish the whole backlog.
+MAX_ITEMS_PER_RUN = 60
 # Every knob here exists for one reason: a 512MB Render free instance kept OOM-ing
 # on this model. threads=1 caps onnxruntime's intra-op thread pool (its default -
 # one thread per CPU core, each with its own buffers - was the first thing that
@@ -35,14 +42,17 @@ def build_text(item: dict) -> str:
     return f"{item['title']}. {item['description']}"
 
 
-def main() -> None:
+def main() -> int:
+    """Embeds up to MAX_ITEMS_PER_RUN items. Returns how many are still left
+    unembedded afterward (0 means the backlog is fully drained)."""
     init_db()
-    items = get_items_missing_embeddings()
-    if not items:
+    all_missing = get_items_missing_embeddings()
+    if not all_missing:
         print("No items need embeddings.")
-        return
+        return 0
 
-    print(f"Embedding {len(items)} items with {MODEL_NAME}...")
+    items = all_missing[:MAX_ITEMS_PER_RUN]
+    print(f"Embedding {len(items)} of {len(all_missing)} pending items with {MODEL_NAME}...")
     model = load_model()
     texts = [build_text(item) for item in items]
     created_at = datetime.now(timezone.utc).isoformat()
@@ -61,7 +71,9 @@ def main() -> None:
         )
 
     upsert_embeddings(rows)
-    print(f"Stored {len(rows)} embeddings.")
+    remaining = len(all_missing) - len(rows)
+    print(f"Stored {len(rows)} embeddings. {remaining} still pending.")
+    return remaining
 
 
 if __name__ == "__main__":

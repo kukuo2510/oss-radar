@@ -178,9 +178,13 @@ def run_step(step: str, x_admin_token: Optional[str] = Header(default=None)):
         raise HTTPException(404, f"unknown step {step!r}, expected one of {list(PIPELINE_STEPS)}")
 
     try:
-        PIPELINE_STEPS[step]()
+        result = PIPELINE_STEPS[step]()
     except Exception as e:
         raise HTTPException(500, f"{step} failed: {e}")
     finally:
         gc.collect()
-    return {"step": step, "status": "ok"}
+
+    response = {"step": step, "status": "ok"}
+    if result is not None:  # currently only embed reports this: items still pending
+        response["remaining"] = result
+    return response

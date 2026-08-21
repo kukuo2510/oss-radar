@@ -11,9 +11,12 @@ import logging
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+import classify
+import embed
 import ingest_arxiv
 import ingest_github
 import ingest_hf
+import trend
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,12 +47,29 @@ def run_hf() -> None:
     run_job("huggingface", ingest_hf)
 
 
+def run_embed() -> None:
+    run_job("embed", embed)
+
+
+def run_classify() -> None:
+    run_job("classify", classify)
+
+
+def run_trend() -> None:
+    run_job("trend", trend)
+
+
 def build_scheduler() -> BlockingScheduler:
     scheduler = BlockingScheduler()
-    # Staggered start times so the three sources don't hit their APIs at once.
+    # Ingestion first (staggered so the three sources don't hit their APIs at once),
+    # then embed -> classify -> trend, each given enough of a gap to let the previous
+    # step finish before the next one reads its output.
     scheduler.add_job(run_arxiv, CronTrigger(hour=2, minute=0), id="arxiv")
     scheduler.add_job(run_github, CronTrigger(hour=2, minute=10), id="github")
     scheduler.add_job(run_hf, CronTrigger(hour=2, minute=20), id="huggingface")
+    scheduler.add_job(run_embed, CronTrigger(hour=2, minute=40), id="embed")
+    scheduler.add_job(run_classify, CronTrigger(hour=2, minute=50), id="classify")
+    scheduler.add_job(run_trend, CronTrigger(hour=3, minute=0), id="trend")
     return scheduler
 
 

@@ -13,7 +13,8 @@
 - [x] 統一的 SQLite schema（`items` + `metric_snapshots`）
 - [x] 排程自動抓取（`src/scheduler.py`，本地開發版）
 - [x] Embedding（`src/embed.py`）+ 零樣本語意分類（`src/classify.py`）
-- [ ] 趨勢分數（依 star/download 成長率，而非絕對值）
+- [x] 趨勢分數（`src/trend.py`，依 star/download 成長率，冷啟動時退回百分位排名）
+- [x] 簡易本地 HTML 報表（`src/report.py`，開發用，非正式 app UI）
 - [ ] 個人化推薦
 - [ ] API（FastAPI）
 - [ ] 前端（PWA）
@@ -71,6 +72,28 @@ python classify.py   # 零樣本分類：算 item embedding 與 11 個預先定�
 的主題名稱，能直接拿來當 app 裡的分類 tab，不用像分群結果那樣還要自己命名每一群在講什麼。
 
 已知限制：目前各主題分數集中在 0.65-0.77，區分度不夠明顯，之後可以調整主題描述文字或換更大的 embedding model 來改善。
+
+### 趨勢分數
+
+```bash
+cd src
+python trend.py
+```
+
+依 GitHub star / HF download 的成長速度（每天變化量）排序，而非看絕對數字——一個從 10 星衝到 200 星
+的新 repo 應該排在一個長年停在 5000 星沒動靜的 repo 前面。計算成長率需要至少兩筆間隔一段時間的
+`metric_snapshots`，剛跑第一次（或排程還沒跑滿一整天）的 item 沒有歷史可比，會退回用「目前數值的百分位
+排名」當替代分數（冷啟動問題，之後有更多天的快照資料後會自動改用真正的成長率）。arXiv 論文因為沒有
+熱度數字可以追蹤，不計算趨勢分數。
+
+### 本地報表（開發用）
+
+```bash
+cd src
+python report.py   # 產生 data/report.html，看目前資料狀態、分類分布、趨勢排行
+```
+
+不是正式 app UI，純粹是開發階段快速肉眼檢查資料品質用的靜態頁面。
 
 ### 環境變數（選用）
 

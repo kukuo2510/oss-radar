@@ -43,6 +43,15 @@ CREATE TABLE IF NOT EXISTS item_tags (
     created_at TEXT NOT NULL,
     PRIMARY KEY (source, source_id, tag)
 );
+
+CREATE TABLE IF NOT EXISTS trend_scores (
+    source      TEXT NOT NULL,
+    source_id   TEXT NOT NULL,
+    score       REAL NOT NULL,
+    basis       TEXT NOT NULL,
+    computed_at TEXT NOT NULL,
+    PRIMARY KEY (source, source_id)
+);
 """
 
 
@@ -125,6 +134,18 @@ def upsert_tags(rows: list[dict]) -> None:
             """
             INSERT OR REPLACE INTO item_tags (source, source_id, tag, score, created_at)
             VALUES (:source, :source_id, :tag, :score, :created_at)
+            """,
+            rows,
+        )
+
+
+def upsert_trend_scores(rows: list[dict]) -> None:
+    """Each row: source, source_id, score, basis, computed_at."""
+    with get_connection() as conn:
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO trend_scores (source, source_id, score, basis, computed_at)
+            VALUES (:source, :source_id, :score, :basis, :computed_at)
             """,
             rows,
         )

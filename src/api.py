@@ -6,14 +6,21 @@ embed, classify, trend, recommend) already does the real work; this module just
 wraps their outputs and DB reads as HTTP endpoints.
 """
 
+import os
 from typing import Optional
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastembed import TextEmbedding
 from pydantic import BaseModel
 
+import classify
+import embed as embed_module
+import ingest_arxiv
+import ingest_github
+import ingest_hf
+import trend
 from db import (
     get_all_embeddings,
     get_item,
@@ -29,14 +36,17 @@ from recommend import cosine_sim, recommend as compute_recommendations
 
 app = FastAPI(title="OSS Radar API")
 
-# Permissive for local dev since the PWA's origin isn't decided yet; tighten this
-# once a real deploy target/domain is chosen.
+# ALLOWED_ORIGINS is a comma-separated list, e.g. "https://oss-radar.vercel.app".
+# Defaults to "*" for local dev, where the PWA's real origin doesn't exist yet.
+_allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "*")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"] if _allowed_origins_env == "*" else _allowed_origins_env.split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN")
 
 _search_model: Optional[TextEmbedding] = None
 
@@ -133,3 +143,37 @@ def create_interaction(payload: InteractionIn):
         raise HTTPException(400, "action must be 'like' or 'skip'")
     record_interaction(payload.source, payload.source_id, payload.action)
     return {"status": "ok"}
+
+
+@app.post("/admin/run-pipeline")
+def run_pipeline(x_admin_token: Optional[str] = Header(default=None)):
+    """Runs the full daily pipeline (ingest all sources -> embed -> classify -> trend)
+    synchronously and returns when done. This exists because free-tier hosting
+    (Render, etc.) doesn't include a cron feature - the plan is to have an external
+    free scheduler (a GitHub Actions scheduled workflow) call this endpoint once a
+    day instead of running an in-process APScheduler like scheduler.py does locally.
+
+    Calls each module's main() directly (not scheduler.py's run_* wrappers, which
+    swallow exceptions for local logging) so a real failure surfaces in the response
+    instead of silently reporting "ok"."""
+    if not ADMIN_TOKEN:
+        raise HTTPException(503, "admin pipeline not configured (ADMIN_TOKEN unset)")
+    if x_admin_token != ADMIN_TOKEN:
+        raise HTTPException(401, "invalid admin token")
+
+    steps = [
+        ("arxiv", ingest_arxiv.main),
+        ("github", ingest_github.main),
+        ("huggingface", ingest_hf.main),
+        ("embed", embed_module.main),
+        ("classify", classify.main),
+        ("trend", trend.main),
+    ]
+    results = {}
+    for name, fn in steps:
+        try:
+            fn()
+            results[name] = "ok"
+        except Exception as e:  # noqa: BLE001 - report every step's outcome, don't let one abort the rest
+            results[name] = f"failed: {e}"
+    return results

@@ -1,0 +1,24 @@
+# Render Blueprint for the OSS Radar API (FastAPI backend).
+# Deploy: push this repo, then in Render "New +" -> "Blueprint" -> point at this repo.
+#
+# KNOWN LIMITATION: the free plan has no persistent disk, so data/oss_radar.db can
+# be wiped on redeploy/instance migration. Fine for a portfolio demo; if that
+# actually bites, either add a paid Render Disk mounted at ./data, or migrate to a
+# free external Postgres (Neon/Supabase) - see README "部署" section.
+#
+# Exact field names may drift from Render's current schema; verify against
+# https://render.com/docs/blueprint-spec before relying on this as-is.
+services:
+  - type: web
+    name: oss-radar-api
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: cd src && uvicorn api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: ALLOWED_ORIGINS
+        value: "*" # replace with your deployed frontend URL, e.g. https://oss-radar.vercel.app
+      - key: ADMIN_TOKEN
+        generateValue: true # Render generates a random secret; copy it into the GitHub Actions secret below

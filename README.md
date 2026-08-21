@@ -16,8 +16,9 @@
 - [x] 趨勢分數（`src/trend.py`，依 star/download 成長率，冷啟動時退回百分位排名）
 - [x] 簡易本地 HTML 報表（`src/report.py`，開發用，非正式 app UI）
 - [x] 個人化推薦（`src/recommend.py` + `src/interact.py` 手動標記工具）
-- [x] API（`src/api.py`，FastAPI）
+- [x] API（`src/api.py`，FastAPI，含 `/admin/run-pipeline` 供外部排程觸發）
 - [x] 前端（`web/`，React + Vite PWA）
+- [x] 部署設定檔（`render.yaml`、GitHub Actions 排程、Vercel 環境變數說明）——設定檔已備妥，實際申請帳號/連網域待使用者操作
 
 ## 架構
 
@@ -54,8 +55,8 @@ python scheduler.py   # 常駐執行，每天 02:00/02:10/02:20 依序跑三個�
 ```
 
 排程與 app 完全脫鉤：app 只透過 API 讀 DB 當下的資料，不負責、也不需要知道資料是怎麼進來的。
-部署到正式環境後，同一套 job 邏輯會改成在後端 process 內跑，或交給平台的 cron 功能（GitHub Actions
-scheduled workflow、Render Cron Jobs 等）呼叫同樣的 `ingest_*.main()`。
+部署到正式環境後（見下方「部署」），改成由 GitHub Actions 排程呼叫 API 的 `POST /admin/run-pipeline`
+端點，而不是本地這支常駐的 `scheduler.py`——因為免費主機方案通常沒有內建 cron 功能。
 
 ### Embedding + 分類
 
@@ -124,6 +125,7 @@ python -m uvicorn api:app --reload
 | `GET /recommendations` | 個人化推薦（`recommend.py` 的結果）|
 | `GET /search?q=...` | 跨來源語意搜尋（即時 embed 查詢字串，跟全部 item 算 cosine similarity）|
 | `POST /interactions` | 記錄按讚/略過，body: `{"source", "source_id", "action"}` |
+| `POST /admin/run-pipeline` | 跑完整 pipeline（三來源 ingestion + embed + classify + trend），需要 `X-Admin-Token` header 對上 `ADMIN_TOKEN` 環境變數；沒設定 `ADMIN_TOKEN` 時整個端點回 503。給外部排程（見「部署」）呼叫用，不是給前端用的 |
 
 這一層存在的原因：app 是瀏覽器/手機端，沒辦法像 `report.py` 那樣直接開 SQLite 檔案，所有邏輯都要透過
 HTTP 暴露出去。API 本身不做任何新邏輯，純粹包裝已經寫好的 `ingest_*` / `embed` / `classify` / `trend` /
@@ -180,6 +182,48 @@ python report.py   # 產生 data/report.html，看目前資料狀態、分類分
   export GITHUB_TOKEN=ghp_xxxx
   ```
 
+## 部署
+
+推薦組合：**Vercel（前端）+ Render（後端 API）**，兩者都有免費方案。排程改用 GitHub Actions（見上方
+「排程」段落），不用另外找付費 cron 服務。
+
+### 1. 後端：Render
+
+1. 把這個 repo push 到 GitHub（如果還沒有）
+2. Render 主控台 → New → Blueprint → 選這個 repo，會讀到根目錄的 [`render.yaml`](./render.yaml) 自動建立服務
+3. Render 會自動產生 `ADMIN_TOKEN`（在 render.yaml 裡設定 `generateValue: true`）——部署完後去
+   Render 的環境變數頁面複製這個值，等一下 GitHub Actions 要用
+4. 部署完會拿到一個網址，例如 `https://oss-radar-api.onrender.com`
+
+**已知限制**：Render 免費方案沒有付費的持久化硬碟，`data/oss_radar.db` 在重新部署或機器搬遷時可能被清空。
+對一個作品集 demo 來說可以接受；如果之後真的常常掉資料，兩個選項：(a) 加 Render 的付費 Disk 方案，
+或 (b) 把 SQLite 換成免費的外部 Postgres（Neon、Supabase 都有不會過期的免費方案），這個之前在
+PLAN.md 就已經標註是「之後視需要」的選項，不是新問題。
+
+### 2. 前端：Vercel
+
+1. Vercel 主控台 → New Project → 選這個 repo，Root Directory 設成 `web`（Vercel 會自動偵測是 Vite 專案）
+2. 在專案的環境變數設定 `VITE_API_BASE` = 你 Render 後端的網址（上一步拿到的）
+3. 部署完會拿到一個網址，例如 `https://oss-radar.vercel.app`
+4. 回頭把這個網址填回 Render 後端的 `ALLOWED_ORIGINS` 環境變數（取代 render.yaml 裡的預設 `*`），
+   讓 CORS 只放行你自己的前端，不是任何網站都能打你的 API
+
+### 3. 排程：GitHub Actions
+
+[`.github/workflows/daily-pipeline.yml`](./.github/workflows/daily-pipeline.yml) 已經寫好，每天 UTC 02:00
+（台灣時間早上 10 點）呼叫一次 `/admin/run-pipeline`。要啟用：
+
+1. GitHub repo → Settings → Secrets and variables → Actions，新增兩個 secret：
+   - `API_BASE_URL`：Render 後端網址（不要有結尾斜線），例如 `https://oss-radar-api.onrender.com`
+   - `ADMIN_TOKEN`：跟 Render 環境變數裡的 `ADMIN_TOKEN` 一樣的值
+2. 也可以到 repo 的 Actions 頁面手動觸發一次（`workflow_dispatch`），確認設定正確
+
+### 4. 接自己的網域
+
+上面兩步都會先拿到 Vercel/Render 給的預設網址（`*.vercel.app` / `*.onrender.com`），可以先用這個測試，
+確認都正常後，再到 Vercel／Render 的專案設定加自訂網域（例如 `app.你的網域.com`），然後去你買網域的
+DNS 設定頁面加對應的 CNAME 紀錄——Vercel/Render 都有現成的教學頁面會列出要加哪些紀錄，照著填就好。
+
 ## Tech Stack
 
 - Python 3.14
@@ -189,3 +233,4 @@ python report.py   # 產生 data/report.html，看目前資料狀態、分類分
 - fastembed（ONNX runtime，BAAI/bge-small-en-v1.5 embedding）
 - FastAPI + uvicorn
 - React 19 + Vite（PWA，vanilla service worker，無額外手勢/狀態管理套件）
+- 部署：Vercel（前端）+ Render（後端）+ GitHub Actions（排程，取代免費方案沒有的 cron 功能）

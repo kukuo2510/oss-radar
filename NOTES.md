@@ -40,6 +40,19 @@ embedding model 來改善。
 語意搜尋是即時把全部 item embedding 讀進記憶體算 cosine similarity（線性掃描），資料量還很小（幾百筆）
 完全夠用；之後資料量大到一定程度才需要換向量資料庫（pgvector/Chroma），現階段換反而是過度設計。
 
+端點參考（互動文件見部署後的 `/docs`）：
+
+| 端點 | 說明 |
+|---|---|
+| `GET /items` | 列表，可用 `source`、`tag`、`limit`、`offset` 過濾/分頁 |
+| `GET /items/{source}/{source_id}` | 單筆詳細資料（含標籤）|
+| `GET /tags` | 各主題標籤與數量 |
+| `GET /trending` | 趨勢排行 |
+| `GET /recommendations` | 個人化推薦 |
+| `GET /search?q=...` | 跨來源語意搜尋 |
+| `POST /interactions` | 記錄按讚/略過，body: `{"source", "source_id", "action"}` |
+| `POST /admin/run-step/{step}` | 跑 pipeline 其中一步，需要 `X-Admin-Token` header |
+
 ## 前端
 
 滑卡片手勢自己用 pointer events 寫（`ForYou.jsx`），沒裝手勢函式庫——這個互動夠簡單，加套件的成本

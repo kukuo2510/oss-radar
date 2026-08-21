@@ -11,7 +11,7 @@
 - [x] GitHub ingestion（`src/ingest_github.py`）
 - [x] HuggingFace ingestion（`src/ingest_hf.py`）
 - [x] 統一的 SQLite schema（`items` + `metric_snapshots`）
-- [ ] 排程自動抓取
+- [x] 排程自動抓取（`src/scheduler.py`，本地開發版）
 - [ ] Embedding + 語意分類
 - [ ] 趨勢分數（依 star/download 成長率，而非絕對值）
 - [ ] 個人化推薦
@@ -44,6 +44,17 @@ python ingest_hf.py
 ```
 
 資料會存到 `data/oss_radar.db`（SQLite，未進版本控制）。
+
+### 排程（本地開發）
+
+```bash
+cd src
+python scheduler.py   # 常駐執行，每天 02:00/02:10/02:20 依序跑三個來源
+```
+
+排程與 app 完全脫鉤：app 只透過 API 讀 DB 當下的資料，不負責、也不需要知道資料是怎麼進來的。
+部署到正式環境後，同一套 job 邏輯會改成在後端 process 內跑，或交給平台的 cron 功能（GitHub Actions
+scheduled workflow、Render Cron Jobs 等）呼叫同樣的 `ingest_*.main()`。
 
 ### 環境變數（選用）
 

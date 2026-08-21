@@ -1,0 +1,12 @@
+{
+  "name": "OSS Radar",
+  "short_name": "OSS Radar",
+  "description": "Personalized feed of trending arXiv papers, GitHub repos, and HuggingFace models/datasets",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f7fb",
+  "theme_color": "#4f7cff",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

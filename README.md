@@ -17,7 +17,7 @@
 - [x] 簡易本地 HTML 報表（`src/report.py`，開發用，非正式 app UI）
 - [x] 個人化推薦（`src/recommend.py` + `src/interact.py` 手動標記工具）
 - [x] API（`src/api.py`，FastAPI）
-- [ ] 前端（PWA）
+- [x] 前端（`web/`，React + Vite PWA）
 
 ## 架構
 
@@ -136,6 +136,34 @@ HTTP 暴露出去。API 本身不做任何新邏輯，純粹包裝已經寫好�
 已用真實 HTTP request 驗證過全部端點（`/items`、`/trending`、`/recommendations`、`/search`、
 `POST /interactions`、含斜線的 `source_id` 路由）都正常運作。
 
+### 前端（PWA）
+
+```bash
+cd web
+npm install
+npm run dev -- --host   # --host 讓同一區網的手機也能連
+```
+
+預設在 `http://localhost:5173`，會呼叫 `http://127.0.0.1:8000` 的 API（可用 `VITE_API_BASE` 環境變數覆蓋）。
+手機測試：先啟動 API（`uvicorn api:app --host 0.0.0.0`）和前端都用 `--host`，手機連同一個 Wi-Fi，
+瀏覽器開 `http://<你的電腦區網 IP>:5173`，選「加到主畫面」就會有 app 圖示跟 standalone 模式。
+
+三個分頁：
+- **For You**：卡片式推薦（`/recommendations`），左滑略過、右滑喜歡（或按鈕），寫回 `POST /interactions`
+- **Browse**：來源 + 主題 tab 過濾（`/tags`、`/items`）
+- **Search**：跨來源語意搜尋（`/search`）
+
+滑卡片手勢是自己用 pointer events 寫的（`ForYou.jsx` 的 `onPointerDown/Move/Up`），沒有另外裝手勢函式庫——
+這個互動夠簡單（單軸拖曳判斷左右閾值），加一個套件的成本大於自己寫。
+
+PWA 三件套：`public/manifest.json`（app 名稱/圖示/standalone 模式）、`public/icon.svg`、
+`public/sw.js`（極簡 service worker，只快取 app shell 讓開啟更快，刻意不快取 API 回應——這個 app 的
+價值就是新鮮資料，離線同步不在規劃內）。
+
+已用 Chrome 實際打開測試過三個分頁：For You 滑卡片會正確呼叫 API 並前進到下一張、Browse 的來源/主題
+過濾即時生效、Search 搜尋「vector database for semantic search」有撈到 reranker model 和相關論文，
+console 沒有錯誤。
+
 ### 本地報表（開發用）
 
 ```bash
@@ -160,4 +188,4 @@ python report.py   # 產生 data/report.html，看目前資料狀態、分類分
 - APScheduler（排程）
 - fastembed（ONNX runtime，BAAI/bge-small-en-v1.5 embedding）
 - FastAPI + uvicorn
-- （規劃中）PWA 前端
+- React 19 + Vite（PWA，vanilla service worker，無額外手勢/狀態管理套件）

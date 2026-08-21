@@ -5,6 +5,10 @@
 
 這是一個求職用的 side project，目標是展示資料擷取、embedding/語意分類、趨勢訊號設計、個人化推薦與 API/前端部署的完整流程。詳細規劃見 [PLAN.md](./PLAN.md)。
 
+**上線網址**：
+- App：https://oss-radar-theta.vercel.app
+- API：https://oss-radar-api.onrender.com（互動文件在 `/docs`）
+
 ## 目前進度
 
 - [x] arXiv ingestion（`src/ingest_arxiv.py`）
@@ -16,9 +20,10 @@
 - [x] 趨勢分數（`src/trend.py`，依 star/download 成長率，冷啟動時退回百分位排名）
 - [x] 簡易本地 HTML 報表（`src/report.py`，開發用，非正式 app UI）
 - [x] 個人化推薦（`src/recommend.py` + `src/interact.py` 手動標記工具）
-- [x] API（`src/api.py`，FastAPI，含 `/admin/run-pipeline` 供外部排程觸發）
+- [x] API（`src/api.py`，FastAPI，含 `/admin/run-step/{step}` 供外部排程觸發）
 - [x] 前端（`web/`，React + Vite PWA）
-- [x] 部署設定檔（`render.yaml`、GitHub Actions 排程、Vercel 環境變數說明）——設定檔已備妥，實際申請帳號/連網域待使用者操作
+- [x] 部署上線：API 在 Render、前端在 Vercel，兩邊都實際部署驗證過（不只是設定檔備妥而已）
+- [ ] GitHub Actions 排程 secrets（`API_BASE_URL`、`ADMIN_TOKEN`）——每天自動跑 pipeline 這件事還沒啟用，目前是手動觸發
 
 ## 架構
 
@@ -200,13 +205,18 @@ python report.py   # 產生 data/report.html，看目前資料狀態、分類分
 或 (b) 把 SQLite 換成免費的外部 Postgres（Neon、Supabase 都有不會過期的免費方案），這個之前在
 PLAN.md 就已經標註是「之後視需要」的選項，不是新問題。
 
+**實測踩到的坑**：Render 預設對 `master` 分支的每一次 push 都會自動重新部署——**就算只改了 README、
+只是文件變更、完全沒動到程式邏輯**，一樣會觸發重新部署，資料庫一樣會被清空。也就是說只要這個 repo
+還在持續開發、還會 push，資料就會不定期消失，得重新跑一次 pipeline（見下面）。想避免的話可以去 Render
+的 Settings → Build & Deploy 把 Auto-Deploy 關掉，改成程式碼真的有改動時才手動按 Deploy。
+
 ### 2. 前端：Vercel
 
 1. Vercel 主控台 → New Project → 選這個 repo，Root Directory 設成 `web`（Vercel 會自動偵測是 Vite 專案）
 2. 在專案的環境變數設定 `VITE_API_BASE` = 你 Render 後端的網址（上一步拿到的）
-3. 部署完會拿到一個網址，例如 `https://oss-radar.vercel.app`
-4. 回頭把這個網址填回 Render 後端的 `ALLOWED_ORIGINS` 環境變數（取代 render.yaml 裡的預設 `*`），
-   讓 CORS 只放行你自己的前端，不是任何網站都能打你的 API
+3. 部署完會拿到一個網址（本專案是 `https://oss-radar-theta.vercel.app`）
+4. **待辦**：回頭把這個網址填回 Render 後端的 `ALLOWED_ORIGINS` 環境變數（取代 render.yaml 裡的預設
+   `*`），讓 CORS 只放行自己的前端，不是任何網站都能打這個 API——目前還沒做，先開著 `*` 方便開發測試
 
 ### 3. 排程：GitHub Actions
 

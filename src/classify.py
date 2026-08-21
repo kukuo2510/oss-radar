@@ -10,7 +10,7 @@ import numpy as np
 from fastembed import TextEmbedding
 
 from db import get_all_embeddings, init_db, upsert_tags
-from embed import MODEL_NAME
+from embed import MODEL_NAME, THREADS
 
 TOPICS = {
     "Large Language Models": "large language models, LLMs, transformers, prompting, fine-tuning, instruction tuning",
@@ -42,7 +42,7 @@ def main() -> None:
         return
 
     print(f"Classifying {len(embeddings)} items into {len(TOPICS)} topics...")
-    model = TextEmbedding(model_name=MODEL_NAME)
+    model = TextEmbedding(model_name=MODEL_NAME, threads=THREADS)
     topic_names = list(TOPICS.keys())
     topic_vectors = list(model.embed(list(TOPICS.values())))
 

@@ -13,7 +13,11 @@ from fastembed import TextEmbedding
 from db import get_items_missing_embeddings, init_db, upsert_embeddings
 
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
-BATCH_SIZE = 64
+BATCH_SIZE = 8
+# threads=1 caps onnxruntime's intra-op thread pool. Its default (one thread per
+# CPU core, each with its own buffers) OOM'd a 512MB Render free instance; a small
+# model on a background job doesn't need to be fast, it needs to fit.
+THREADS = 1
 
 
 def build_text(item: dict) -> str:
@@ -28,7 +32,7 @@ def main() -> None:
         return
 
     print(f"Embedding {len(items)} items with {MODEL_NAME}...")
-    model = TextEmbedding(model_name=MODEL_NAME)
+    model = TextEmbedding(model_name=MODEL_NAME, threads=THREADS)
     texts = [build_text(item) for item in items]
     created_at = datetime.now(timezone.utc).isoformat()
 

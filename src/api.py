@@ -32,7 +32,7 @@ from db import (
     init_db,
     record_interaction,
 )
-from embed import MODEL_NAME
+from embed import MODEL_NAME, THREADS
 from recommend import cosine_sim, recommend as compute_recommendations
 
 app = FastAPI(title="OSS Radar API")
@@ -55,7 +55,7 @@ _search_model: Optional[TextEmbedding] = None
 def get_search_model() -> TextEmbedding:
     global _search_model
     if _search_model is None:
-        _search_model = TextEmbedding(model_name=MODEL_NAME)
+        _search_model = TextEmbedding(model_name=MODEL_NAME, threads=THREADS)
     return _search_model
 
 

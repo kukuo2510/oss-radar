@@ -13,11 +13,22 @@ from fastembed import TextEmbedding
 from db import get_items_missing_embeddings, init_db, upsert_embeddings
 
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
-BATCH_SIZE = 8
-# threads=1 caps onnxruntime's intra-op thread pool. Its default (one thread per
-# CPU core, each with its own buffers) OOM'd a 512MB Render free instance; a small
-# model on a background job doesn't need to be fast, it needs to fit.
+BATCH_SIZE = 1
+# Every knob here exists for one reason: a 512MB Render free instance kept OOM-ing
+# on this model. threads=1 caps onnxruntime's intra-op thread pool (its default -
+# one thread per CPU core, each with its own buffers - was the first thing that
+# didn't fit). Disabling the CPU memory arena stops onnxruntime from pre-allocating
+# a growable memory pool up front; it costs a bit of speed per call, which a
+# background job running once a day can afford. None of this matters on a dev
+# machine with RAM to spare - it only matters because production doesn't have it.
 THREADS = 1
+ORT_PROVIDERS = [
+    ("CPUExecutionProvider", {"arena_extend_strategy": "kSameAsRequested", "enable_cpu_mem_arena": "0"})
+]
+
+
+def load_model() -> TextEmbedding:
+    return TextEmbedding(model_name=MODEL_NAME, threads=THREADS, providers=ORT_PROVIDERS)
 
 
 def build_text(item: dict) -> str:
@@ -32,7 +43,7 @@ def main() -> None:
         return
 
     print(f"Embedding {len(items)} items with {MODEL_NAME}...")
-    model = TextEmbedding(model_name=MODEL_NAME, threads=THREADS)
+    model = load_model()
     texts = [build_text(item) for item in items]
     created_at = datetime.now(timezone.utc).isoformat()
 

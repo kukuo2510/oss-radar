@@ -52,14 +52,14 @@ export default function ForYou() {
     else setDragX(0);
   }
 
-  if (loading) return <div className="state-msg">Loading recommendations...</div>;
-  if (error) return <div className="state-msg error">Failed to load: {error}</div>;
+  if (loading) return <div className="state-msg">奏摺呈覽中…</div>;
+  if (error) return <div className="state-msg error">呈覽失敗：{error}</div>;
   if (queue.length === 0)
     return (
       <div className="state-msg">
-        No more items right now.
+        暫無新奏摺
         <button className="btn" onClick={load}>
-          Refresh
+          重新呈覽
         </button>
       </div>
     );
@@ -80,10 +80,10 @@ export default function ForYou() {
         onPointerLeave={onPointerUp}
       >
         <span className="stamp stamp-like" style={{ opacity: likeOpacity }}>
-          LIKE
+          准
         </span>
         <span className="stamp stamp-skip" style={{ opacity: skipOpacity }}>
-          SKIP
+          駁
         </span>
         <div className="item-card-header">
           <SourceBadge source={current.source} />
@@ -101,19 +101,19 @@ export default function ForYou() {
           </div>
         )}
         <p className="basis-note">
-          {current.basis === "personalized" ? "matched to your taste" : "trending now"}
+          {current.basis === "personalized" ? "合您心意" : "當朝熱議"}
         </p>
       </div>
 
       <div className="swipe-actions">
         <button className="btn btn-skip" onClick={() => act("skip")}>
-          ✕ Skip
+          ✕ 駁回
         </button>
         <button className="btn btn-like" onClick={() => act("like")}>
-          ♥ Like
+          ✓ 恩准
         </button>
       </div>
-      <p className="queue-count">{queue.length} left in this batch</p>
+      <p className="queue-count">本批尚餘 {queue.length} 份</p>
     </div>
   );
 }

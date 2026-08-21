@@ -3,11 +3,11 @@ import { getItems, getTags } from "../api";
 import ItemCard from "./ItemCard";
 
 const SOURCES = [
-  { value: "", label: "All" },
-  { value: "arxiv", label: "arXiv" },
-  { value: "github", label: "GitHub" },
-  { value: "huggingface_models", label: "HF Models" },
-  { value: "huggingface_datasets", label: "HF Datasets" },
+  { value: "", label: "全部" },
+  { value: "arxiv", label: "論文" },
+  { value: "github", label: "程式庫" },
+  { value: "huggingface_models", label: "模型" },
+  { value: "huggingface_datasets", label: "資料集" },
 ];
 
 export default function Browse() {
@@ -43,7 +43,7 @@ export default function Browse() {
       </div>
       <div className="chip-row scroll">
         <button className={`chip ${tag === "" ? "chip-active" : ""}`} onClick={() => setTag("")}>
-          All topics
+          全部類別
         </button>
         {tags.map((t) => (
           <button
@@ -57,9 +57,9 @@ export default function Browse() {
       </div>
 
       {loading ? (
-        <div className="state-msg">Loading...</div>
+        <div className="state-msg">查閱中…</div>
       ) : items.length === 0 ? (
-        <div className="state-msg">No items match this filter.</div>
+        <div className="state-msg">查無符合之項目</div>
       ) : (
         <div className="item-list">
           {items.map((item) => (

@@ -23,17 +23,17 @@ export default function Search() {
       <form onSubmit={runSearch} className="search-form">
         <input
           type="search"
-          placeholder="Search across papers, repos, models..."
+          placeholder="查閱論文、程式庫、模型…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
         <button className="btn" type="submit">
-          Search
+          查閱
         </button>
       </form>
 
-      {loading && <div className="state-msg">Searching...</div>}
-      {!loading && searched && results.length === 0 && <div className="state-msg">No results.</div>}
+      {loading && <div className="state-msg">查閱中…</div>}
+      {!loading && searched && results.length === 0 && <div className="state-msg">查無所獲</div>}
 
       <div className="item-list">
         {results.map((item) => (

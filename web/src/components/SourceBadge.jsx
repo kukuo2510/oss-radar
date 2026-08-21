@@ -1,8 +1,8 @@
 const LABELS = {
-  arxiv: "arXiv",
-  github: "GitHub",
-  huggingface_models: "HF Model",
-  huggingface_datasets: "HF Dataset",
+  arxiv: "論文",
+  github: "程式庫",
+  huggingface_models: "模型",
+  huggingface_datasets: "資料集",
 };
 
 export default function SourceBadge({ source }) {

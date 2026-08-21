@@ -1,7 +1,7 @@
 // Minimal service worker: cache the app shell only, so "add to home screen"
 // launches instantly even on a flaky connection. Deliberately NOT caching API
 // responses - this app's whole point is fresh data, offline sync is out of scope.
-const CACHE = "oss-radar-shell-v1";
+const CACHE = "oss-radar-shell-v2";
 const SHELL = ["/", "/manifest.json", "/icon.svg"];
 
 self.addEventListener("install", (event) => {

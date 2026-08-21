@@ -5,9 +5,9 @@ import Browse from "./components/Browse";
 import Search from "./components/Search";
 
 const TABS = [
-  { key: "foryou", label: "For You", icon: "✨" },
-  { key: "browse", label: "Browse", icon: "📚" },
-  { key: "search", label: "Search", icon: "🔍" },
+  { key: "foryou", label: "奏摺", icon: "📜" },
+  { key: "browse", label: "藏書閣", icon: "📚" },
+  { key: "search", label: "查閱", icon: "🔍" },
 ];
 
 export default function App() {
@@ -17,6 +17,7 @@ export default function App() {
     <div className="app-shell">
       <header className="app-header">
         <h1>OSS Radar</h1>
+        <p className="subtitle">奏 摺 呈 覽</p>
       </header>
 
       <main className="app-main">

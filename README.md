@@ -228,6 +228,10 @@ PLAN.md 就已經標註是「之後視需要」的選項，不是新問題。
    15 筆（`MAX_ITEMS_PER_RUN`，實際數字是部署後量出來的，不是猜的），回傳「還剩幾筆沒處理」，GitHub
    Actions 那邊改成迴圈呼叫直到清空。
 
+**已在正式環境完整驗證過**（2026-08-21）：從空白資料庫開始，跑完 3 個來源 ingestion → 25 次 embed
+呼叫（371 筆資料，每次 15 筆）→ classify → trend，全部端點回應正常，`/tags`、`/recommendations`、
+`/search` 資料都正確，跟本地開發環境結果一致。
+
 要啟用：
 
 1. GitHub repo → Settings → Secrets and variables → Actions，新增兩個 secret：

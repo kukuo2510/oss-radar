@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "oss_radar.db"
@@ -51,6 +52,14 @@ CREATE TABLE IF NOT EXISTS trend_scores (
     basis       TEXT NOT NULL,
     computed_at TEXT NOT NULL,
     PRIMARY KEY (source, source_id)
+);
+
+CREATE TABLE IF NOT EXISTS interactions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    source     TEXT NOT NULL,
+    source_id  TEXT NOT NULL,
+    action     TEXT NOT NULL CHECK (action IN ('like', 'skip')),
+    created_at TEXT NOT NULL
 );
 """
 
@@ -149,3 +158,29 @@ def upsert_trend_scores(rows: list[dict]) -> None:
             """,
             rows,
         )
+
+
+def get_all_trend_scores() -> dict:
+    with get_connection() as conn:
+        rows = conn.execute("SELECT source, source_id, score FROM trend_scores").fetchall()
+        return {(source, source_id): score for source, source_id, score in rows}
+
+
+def record_interaction(source: str, source_id: str, action: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO interactions (source, source_id, action, created_at) VALUES (?, ?, ?, ?)",
+            (source, source_id, action, datetime.now(timezone.utc).isoformat()),
+        )
+
+
+def get_latest_interactions() -> dict:
+    """(source, source_id) -> most recent action ('like'/'skip'), so a changed mind overrides the old one."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT source, source_id, action FROM interactions
+            WHERE id IN (SELECT MAX(id) FROM interactions GROUP BY source, source_id)
+            """
+        ).fetchall()
+        return {(source, source_id): action for source, source_id, action in rows}

@@ -15,7 +15,7 @@
 - [x] Embedding（`src/embed.py`）+ 零樣本語意分類（`src/classify.py`）
 - [x] 趨勢分數（`src/trend.py`，依 star/download 成長率，冷啟動時退回百分位排名）
 - [x] 簡易本地 HTML 報表（`src/report.py`，開發用，非正式 app UI）
-- [ ] 個人化推薦
+- [x] 個人化推薦（`src/recommend.py` + `src/interact.py` 手動標記工具）
 - [ ] API（FastAPI）
 - [ ] 前端（PWA）
 
@@ -85,6 +85,26 @@ python trend.py
 `metric_snapshots`，剛跑第一次（或排程還沒跑滿一整天）的 item 沒有歷史可比，會退回用「目前數值的百分位
 排名」當替代分數（冷啟動問題，之後有更多天的快照資料後會自動改用真正的成長率）。arXiv 論文因為沒有
 熱度數字可以追蹤，不計算趨勢分數。
+
+### 個人化推薦
+
+app 的按讚/略過 UI 還沒做出來，先用 CLI 工具手動標記，讓推薦邏輯現在就能用真實資料測試：
+
+```bash
+cd src
+python interact.py --like "arxiv:2608.19564v1" --skip "github:some/repo"
+python recommend.py
+```
+
+做法：把喜歡項目的 embedding 取平均當作「使用者興趣向量」（略過的項目則反向拉開一點），
+再用 cosine similarity 對還沒看過的項目排序，最後跟 `trend.py` 的趨勢分數加權混合
+（60% 個人化 + 40% 趨勢），讓「符合興趣」跟「正在熱門」都有影響力，不會兩者只看一個。
+
+冷啟動（完全沒有按讚/略過紀錄）：沒有興趣向量可以算，直接退回純趨勢排序——跟 `trend.py`
+自己處理冷啟動的方式一致，同一套邏輯重複用。
+
+已用真實資料驗證過：標記幾筆 LLM/Agent 相關論文與 repo 為讚、機器人相關為略過後，
+推薦結果確實都帶有 "Large Language Models" 或 "AI Agents & Tool Use" 標籤，符合預期。
 
 ### 本地報表（開發用）
 

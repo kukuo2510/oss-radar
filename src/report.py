@@ -8,6 +8,7 @@ zero extra dependencies.
 from pathlib import Path
 
 from db import get_connection
+from recommend import recommend
 
 REPORT_PATH = Path(__file__).resolve().parent.parent / "data" / "report.html"
 
@@ -71,7 +72,7 @@ def rows_trending(items) -> str:
     )
 
 
-def render_html(source_counts, tag_counts, top_github, top_hf_models, recent_papers, trending) -> str:
+def render_html(source_counts, tag_counts, top_github, top_hf_models, recent_papers, trending, recommendations) -> str:
     max_source = max((c for _, c in source_counts), default=1)
     max_tag = max((c for _, c in tag_counts), default=1)
 
@@ -106,6 +107,11 @@ Not the final app UI.</p>
 <h2>Tag distribution (zero-shot classification)</h2>
 {tag_bars}
 
+<h2>Recommended for you</h2>
+<p class="note">"personalized" blends similarity to your liked items with the trend score;
+"trend_only" means no likes/skips recorded yet (cold start), so it's ranked by trend alone.</p>
+<table><tr><th>Item</th><th>Source</th><th>Score</th><th>Basis</th></tr>{rows_trending(recommendations)}</table>
+
 <h2>Trending now (growth-rate score, falls back to cold-start percentile)</h2>
 <p class="note">"cold_start" means this item only has one metric snapshot so far &mdash; no growth rate
 can be computed yet, needs the scheduler to run across multiple days.</p>
@@ -123,10 +129,24 @@ can be computed yet, needs the scheduler to run across multiple days.</p>
 </body></html>"""
 
 
+def fetch_recommendations(conn) -> list[tuple]:
+    results = recommend(top_n=10)
+    rows = []
+    for r in results:
+        row = conn.execute(
+            "SELECT title, url FROM items WHERE source = ? AND source_id = ?",
+            (r["source"], r["source_id"]),
+        ).fetchone()
+        if row:
+            rows.append((row[0], row[1], r["score"], r["basis"], r["source"]))
+    return rows
+
+
 def main() -> None:
     with get_connection() as conn:
         stats = fetch_stats(conn)
-    html = render_html(*stats)
+        recommendations = fetch_recommendations(conn)
+    html = render_html(*stats, recommendations)
     REPORT_PATH.write_text(html, encoding="utf-8")
     print(f"Report written to {REPORT_PATH}")
 

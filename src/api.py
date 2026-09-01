@@ -21,12 +21,14 @@ import embed as embed_module
 import ingest_arxiv
 import ingest_github
 import ingest_hf
+import report_agent
 import trend
 from db import (
     get_all_embeddings,
     get_item,
     get_item_tags,
     get_items,
+    get_narrations_map,
     get_tags_with_counts,
     get_top_trend_scores,
     init_db,
@@ -109,14 +111,28 @@ def list_tags():
 @app.get("/trending")
 def trending(limit: int = Query(20, le=100)):
     rows = get_top_trend_scores(limit=limit)
-    results = [hydrate(r["source"], r["source_id"], {"score": r["score"], "basis": r["basis"]}) for r in rows]
+    narrations = get_narrations_map()
+    results = [
+        hydrate(r["source"], r["source_id"], {
+            "score": r["score"], "basis": r["basis"],
+            "narration": narrations.get((r["source"], r["source_id"])),
+        })
+        for r in rows
+    ]
     return [r for r in results if r]
 
 
 @app.get("/recommendations")
 def recommendations(limit: int = Query(20, le=100)):
     rows = compute_recommendations(top_n=limit)
-    results = [hydrate(r["source"], r["source_id"], {"score": r["score"], "basis": r["basis"]}) for r in rows]
+    narrations = get_narrations_map()
+    results = [
+        hydrate(r["source"], r["source_id"], {
+            "score": r["score"], "basis": r["basis"],
+            "narration": narrations.get((r["source"], r["source_id"])),
+        })
+        for r in rows
+    ]
     return [r for r in results if r]
 
 
@@ -153,6 +169,7 @@ PIPELINE_STEPS = {
     "embed": embed_module.main,
     "classify": classify.main,
     "trend": trend.main,
+    "narrate": report_agent.main,
 }
 
 

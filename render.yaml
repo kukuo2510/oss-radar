@@ -22,3 +22,7 @@ services:
         value: "*" # replace with your deployed frontend URL, e.g. https://oss-radar.vercel.app
       - key: ADMIN_TOKEN
         generateValue: true # Render generates a random secret; copy it into the GitHub Actions secret below
+      - key: ANTHROPIC_API_KEY
+        sync: false # 不寫在這裡（會進 git 歷史），部署後要自己去 Render Dashboard 的
+        # Environment 分頁手動貼上實際的 key 值——report_agent.py（narrate 這個
+        # pipeline step）要靠這個環境變數才能呼叫 LLM 產生推薦評語。

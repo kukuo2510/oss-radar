@@ -61,6 +61,15 @@ CREATE TABLE IF NOT EXISTS interactions (
     action     TEXT NOT NULL CHECK (action IN ('like', 'skip')),
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS narrations (
+    source     TEXT NOT NULL,
+    source_id  TEXT NOT NULL,
+    narration  TEXT NOT NULL,
+    model      TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (source, source_id)
+);
 """
 
 
@@ -244,3 +253,22 @@ def get_top_trend_scores(limit: int = 20) -> list[dict]:
             (limit,),
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def upsert_narrations(rows: list[dict]) -> None:
+    """Each row: source, source_id, narration, model, created_at."""
+    with get_connection() as conn:
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO narrations (source, source_id, narration, model, created_at)
+            VALUES (:source, :source_id, :narration, :model, :created_at)
+            """,
+            rows,
+        )
+
+
+def get_narrations_map() -> dict:
+    """(source, source_id) -> narration text, for bulk lookup when hydrating a list of items."""
+    with get_connection() as conn:
+        rows = conn.execute("SELECT source, source_id, narration FROM narrations").fetchall()
+        return {(source, source_id): narration for source, source_id, narration in rows}

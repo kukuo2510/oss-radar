@@ -60,3 +60,11 @@ jobs:
               --max-time 250
             echo
           done
+
+      - name: Narrate top recommendations (LLM, report_agent.py)
+        run: |
+          echo "=== running step: narrate ==="
+          curl -sf -X POST "${{ secrets.API_BASE_URL }}/admin/run-step/narrate" \
+            -H "X-Admin-Token: ${{ secrets.ADMIN_TOKEN }}" \
+            --max-time 250
+          echo

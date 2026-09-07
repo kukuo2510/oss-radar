@@ -1,9 +1,17 @@
+"""SQLite 資料存取層：整個 pipeline（ingest / embed / classify / trend / recommend /
+report / interact）共用同一份 SQLite 資料庫，這個模組集中管理 schema 定義與所有
+讀寫函式，其他模組不直接寫 SQL，一律透過這裡提供的函式存取資料庫。
+"""
+
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+# 資料庫檔案固定放在專案根目錄下的 data/oss_radar.db。
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "oss_radar.db"
 
+# 整個系統用到的資料表定義。用 CREATE TABLE IF NOT EXISTS 是為了讓 init_db()
+# 可以每次啟動都安全地重複執行，不需要額外的 migration 機制。
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS items (
     source       TEXT NOT NULL,
@@ -74,17 +82,23 @@ CREATE TABLE IF NOT EXISTS narrations (
 
 
 def get_connection() -> sqlite3.Connection:
+    """建立一個新的資料庫連線；連線前先確保存放資料庫檔案的目錄存在。"""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     return sqlite3.connect(DB_PATH)
 
 
 def init_db() -> None:
+    """依 SCHEMA 建立所有資料表（已存在的表不會被動到），API 啟動、每支腳本執行前都會呼叫一次。"""
     with get_connection() as conn:
         conn.executescript(SCHEMA)
 
 
 def upsert_items(items: list[dict]) -> int:
-    """Insert items, skipping ones already stored (by source+source_id). Returns count of newly inserted rows."""
+    """寫入項目，遇到已存在的（依 source+source_id 判斷）就略過，不覆蓋。
+
+    回傳這次呼叫實際新增的筆數，讓呼叫端可以知道「這次抓到幾筆全新的項目」，
+    而不是「這次總共處理了幾筆」。
+    """
     with get_connection() as conn:
         cur = conn.executemany(
             """
@@ -99,8 +113,12 @@ def upsert_items(items: list[dict]) -> int:
 
 
 def record_snapshots(items: list[dict]) -> None:
-    """Always append a metric snapshot per item, regardless of whether the item itself is new.
-    This builds the time series needed later to compute growth-rate-based trend scores."""
+    """不管項目本身是不是新的，每次抓取都幫每個項目多寫一筆指標快照（metric snapshot）。
+
+    這是刻意設計成「每次都寫」而不是「只在項目是新的時候才寫」：
+    之後計算「成長率」型的熱度分數（trend score）需要同一個項目在不同時間點的指標序列，
+    只有持續累積快照才能還原出這條時間序列。
+    """
     with get_connection() as conn:
         conn.executemany(
             """
@@ -112,6 +130,7 @@ def record_snapshots(items: list[dict]) -> None:
 
 
 def get_items_missing_embeddings() -> list[dict]:
+    """找出 items 裡還沒有對應 embedding 紀錄的項目，供 embed.py 增量處理。"""
     with get_connection() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -127,7 +146,7 @@ def get_items_missing_embeddings() -> list[dict]:
 
 
 def upsert_embeddings(rows: list[dict]) -> None:
-    """Each row: source, source_id, model, vector (bytes), dim, created_at."""
+    """寫入 embedding 向量。每筆 row 需包含：source, source_id, model, vector（bytes）, dim, created_at。"""
     with get_connection() as conn:
         conn.executemany(
             """
@@ -139,6 +158,7 @@ def upsert_embeddings(rows: list[dict]) -> None:
 
 
 def get_all_embeddings() -> list[dict]:
+    """讀出所有項目的 embedding 向量，供 classify.py / api.py 的語意搜尋做線性掃描比對。"""
     with get_connection() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute("SELECT source, source_id, vector, dim FROM embeddings").fetchall()
@@ -146,7 +166,7 @@ def get_all_embeddings() -> list[dict]:
 
 
 def upsert_tags(rows: list[dict]) -> None:
-    """Each row: source, source_id, tag, score, created_at."""
+    """寫入標籤分類結果。每筆 row 需包含：source, source_id, tag, score, created_at。"""
     with get_connection() as conn:
         conn.executemany(
             """
@@ -158,7 +178,7 @@ def upsert_tags(rows: list[dict]) -> None:
 
 
 def upsert_trend_scores(rows: list[dict]) -> None:
-    """Each row: source, source_id, score, basis, computed_at."""
+    """寫入熱度分數。每筆 row 需包含：source, source_id, score, basis, computed_at。"""
     with get_connection() as conn:
         conn.executemany(
             """
@@ -170,12 +190,14 @@ def upsert_trend_scores(rows: list[dict]) -> None:
 
 
 def get_all_trend_scores() -> dict:
+    """回傳 (source, source_id) -> 熱度分數 的對照表，方便其他模組整批查詢。"""
     with get_connection() as conn:
         rows = conn.execute("SELECT source, source_id, score FROM trend_scores").fetchall()
         return {(source, source_id): score for source, source_id, score in rows}
 
 
 def record_interaction(source: str, source_id: str, action: str) -> None:
+    """記錄一次使用者互動（按讚或略過），時間戳記統一用 UTC，避免跨時區比較時出錯。"""
     with get_connection() as conn:
         conn.execute(
             "INSERT INTO interactions (source, source_id, action, created_at) VALUES (?, ?, ?, ?)",
@@ -184,7 +206,11 @@ def record_interaction(source: str, source_id: str, action: str) -> None:
 
 
 def get_latest_interactions() -> dict:
-    """(source, source_id) -> most recent action ('like'/'skip'), so a changed mind overrides the old one."""
+    """回傳 (source, source_id) -> 最新一次的動作（'like'/'skip'）。
+
+    同一個項目可能被使用者按讚後又改成略過（或反過來），這裡只取每組
+    (source, source_id) 裡 id 最大（也就是最新）的那一筆，讓「改變心意」可以覆蓋掉舊的判斷。
+    """
     with get_connection() as conn:
         rows = conn.execute(
             """
@@ -196,6 +222,7 @@ def get_latest_interactions() -> dict:
 
 
 def get_item(source: str, source_id: str) -> dict | None:
+    """依 (source, source_id) 查單一項目的完整欄位；查無資料回傳 None。"""
     with get_connection() as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
@@ -205,6 +232,11 @@ def get_item(source: str, source_id: str) -> dict | None:
 
 
 def get_items(source: str | None = None, tag: str | None = None, limit: int = 50, offset: int = 0) -> list[dict]:
+    """分頁列出項目，可選擇依來源（source）與標籤（tag）篩選。
+
+    SQL 是用字串組合動態拼出來的：只有在有指定 tag 時才 JOIN item_tags 表、
+    只有在有指定 source/tag 時才加對應的 WHERE 條件，避免不需要篩選時多做不必要的 JOIN。
+    """
     query = "SELECT DISTINCT items.* FROM items"
     params: list = []
     where = []
@@ -227,6 +259,7 @@ def get_items(source: str | None = None, tag: str | None = None, limit: int = 50
 
 
 def get_item_tags(source: str, source_id: str) -> list[dict]:
+    """取得單一項目的所有標籤，依分數（score）由高到低排序。"""
     with get_connection() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -237,6 +270,7 @@ def get_item_tags(source: str, source_id: str) -> list[dict]:
 
 
 def get_tags_with_counts() -> list[dict]:
+    """列出所有標籤與各自被使用的次數，依次數由多到少排序，供前端做標籤雲/篩選清單。"""
     with get_connection() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -246,6 +280,7 @@ def get_tags_with_counts() -> list[dict]:
 
 
 def get_top_trend_scores(limit: int = 20) -> list[dict]:
+    """取出熱度分數最高的前 N 筆，作為「熱門排行榜」的資料來源。"""
     with get_connection() as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -256,7 +291,7 @@ def get_top_trend_scores(limit: int = 20) -> list[dict]:
 
 
 def upsert_narrations(rows: list[dict]) -> None:
-    """Each row: source, source_id, narration, model, created_at."""
+    """寫入 LLM 產生的解說文字。每筆 row 需包含：source, source_id, narration, model, created_at。"""
     with get_connection() as conn:
         conn.executemany(
             """
@@ -268,7 +303,8 @@ def upsert_narrations(rows: list[dict]) -> None:
 
 
 def get_narrations_map() -> dict:
-    """(source, source_id) -> narration text, for bulk lookup when hydrating a list of items."""
+    """回傳 (source, source_id) -> 解說文字 的對照表，供批次組裝清單（hydrate）時查表使用，
+    避免對每個項目各自查一次資料庫。"""
     with get_connection() as conn:
         rows = conn.execute("SELECT source, source_id, narration FROM narrations").fetchall()
         return {(source, source_id): narration for source, source_id, narration in rows}

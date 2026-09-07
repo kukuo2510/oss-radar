@@ -1,8 +1,11 @@
-"""Generate a static HTML report summarizing the current pipeline output.
+"""產生一份靜態 HTML 報表，摘要目前整條 pipeline 的執行結果。
 
-This is a dev-time sanity-check tool, NOT the final app UI (that's the PWA planned
-for later, once the API layer exists). Pure HTML/CSS, no chart library, so it has
-zero extra dependencies.
+這是開發階段用來快速檢查資料品質的小工具，**不是**正式的 App 畫面
+（正式畫面是之後 API 層完成後才會做的 PWA）。純 HTML/CSS 組字串輸出，
+沒有用任何圖表函式庫，所以完全不需要額外安裝套件。
+
+注意：下面組 HTML 的字串（包含所有看得到的英文標題/說明文字）都是最終輸出的一部分，
+重整時只調整 Python 程式碼的排版與補充註解，不會更動任何輸出內容，避免報表長相跑掉。
 """
 
 from pathlib import Path
@@ -14,6 +17,7 @@ REPORT_PATH = Path(__file__).resolve().parent.parent / "data" / "report.html"
 
 
 def fetch_stats(conn):
+    """一次查出報表需要的所有統計資料：各來源筆數、標籤分布、各來源熱門項目、目前熱度排行。"""
     source_counts = conn.execute(
         "SELECT source, COUNT(*) FROM items GROUP BY source ORDER BY COUNT(*) DESC"
     ).fetchall()
@@ -42,6 +46,7 @@ def fetch_stats(conn):
 
 
 def bar(label: str, count: int, max_count: int) -> str:
+    """畫一條簡單的橫向長條圖（純 HTML/CSS，寬度用百分比表示），用於「各來源筆數」等統計。"""
     width = int(count / max_count * 100) if max_count else 0
     return (
         f'<div class="bar-row"><span class="bar-label">{label}</span>'
@@ -51,6 +56,7 @@ def bar(label: str, count: int, max_count: int) -> str:
 
 
 def rows_with_metric(items) -> str:
+    """把 (title, metric, url) 這種列資料轉成表格列 HTML，metric 用千分位格式顯示。"""
     return "\n".join(
         f'<tr><td><a href="{url}" target="_blank">{title}</a></td><td>{metric:,}</td></tr>'
         for title, metric, url in items
@@ -58,6 +64,7 @@ def rows_with_metric(items) -> str:
 
 
 def rows_with_date(items) -> str:
+    """把 (title, published, url) 這種列資料轉成表格列 HTML，用於「最新論文」列表。"""
     return "\n".join(
         f'<tr><td><a href="{url}" target="_blank">{title}</a></td><td>{published}</td></tr>'
         for title, published, url in items
@@ -65,6 +72,7 @@ def rows_with_date(items) -> str:
 
 
 def rows_trending(items) -> str:
+    """把 (title, url, score, basis, source) 這種列資料轉成表格列 HTML，用於熱度/推薦列表。"""
     return "\n".join(
         f'<tr><td><a href="{url}" target="_blank">{title}</a></td>'
         f'<td>{source}</td><td>{score:.2f}</td><td>{basis}</td></tr>'
@@ -73,6 +81,8 @@ def rows_trending(items) -> str:
 
 
 def render_html(source_counts, tag_counts, top_github, top_hf_models, recent_papers, trending, recommendations) -> str:
+    """把所有統計資料組成完整的 HTML 報表字串。max_source / max_tag 是為了讓長條圖的
+    寬度百分比是「相對於目前最大值」，而不是絕對數字。"""
     max_source = max((c for _, c in source_counts), default=1)
     max_tag = max((c for _, c in tag_counts), default=1)
 
@@ -130,6 +140,7 @@ can be computed yet, needs the scheduler to run across multiple days.</p>
 
 
 def fetch_recommendations(conn) -> list[tuple]:
+    """取得前 10 筆推薦結果，並補上標題與網址（方便報表直接顯示可點擊的連結）。"""
     results = recommend(top_n=10)
     rows = []
     for r in results:
@@ -143,6 +154,7 @@ def fetch_recommendations(conn) -> list[tuple]:
 
 
 def main() -> None:
+    """查詢所有需要的資料、組成 HTML，最後寫入報表檔案。"""
     with get_connection() as conn:
         stats = fetch_stats(conn)
         recommendations = fetch_recommendations(conn)

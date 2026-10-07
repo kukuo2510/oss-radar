@@ -101,3 +101,67 @@ export function LogoMark({ size = 28 }) {
     </svg>
   );
 }
+
+export const BookOpenIcon = (p) => (
+  <Svg {...p}>
+    <path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z" />
+    <path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z" />
+  </Svg>
+);
+
+export const PlusIcon = (p) => (
+  <Svg strokeWidth={2} {...p}>
+    <path d="M5 12h14M12 5v14" />
+  </Svg>
+);
+
+export const ArrowLeftIcon = (p) => (
+  <Svg {...p}>
+    <path d="m12 19-7-7 7-7M19 12H5" />
+  </Svg>
+);
+
+export const MonitorIcon = (p) => (
+  <Svg size={20} {...p}>
+    <rect width="20" height="14" x="2" y="3" rx="2" />
+    <path d="M8 21h8M12 17v4" />
+  </Svg>
+);
+
+export const AlertIcon = (p) => (
+  <Svg size={16} strokeWidth={2} {...p}>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 8v4M12 16h.01" />
+  </Svg>
+);
+
+export const CopyIcon = (p) => (
+  <Svg size={16} strokeWidth={2} {...p}>
+    <rect width="13" height="13" x="9" y="9" rx="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </Svg>
+);
+
+export const CheckIcon = (p) => (
+  <Svg size={16} strokeWidth={2} {...p}>
+    <path d="M20 6 9 17l-5-5" />
+  </Svg>
+);
+
+export const TypeIcon = (p) => (
+  <Svg {...p}>
+    <path d="M4 7V4h16v3M9 20h6M12 4v16" />
+  </Svg>
+);
+
+export const ExternalLinkIcon = (p) => (
+  <Svg size={18} {...p}>
+    <path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+  </Svg>
+);
+
+export const PromptIcon = (p) => (
+  <Svg size={16} strokeWidth={2} {...p}>
+    <path d="M4 17l6-6-6-6M12 19h8" />
+  </Svg>
+);

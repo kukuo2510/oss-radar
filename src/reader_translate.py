@@ -319,10 +319,15 @@ def _out_path(doc_path: Path) -> Path:
     return doc_path.with_name(doc_path.stem + ".zh.json")
 
 
-def translate_doc(doc_path: Path, model: str, limit: int | None = None) -> dict:
-    doc = json.loads(doc_path.read_text(encoding="utf-8"))
-    out_path = _out_path(doc_path)
-    prev = json.loads(out_path.read_text(encoding="utf-8")) if out_path.exists() else {}
+def translate(doc: dict, model: str, prev: dict | None = None, limit: int | None = None,
+              on_progress=None, name: str = "") -> dict:
+    """翻譯一份區塊文件，回傳譯文 dict。
+
+    prev：上次（可能中斷）的譯文，同模型、原文沒變的段落直接沿用。
+    on_progress(result, done, total)：每翻完一段呼叫一次，呼叫端負責存檔／寫資料庫，
+    長論文跑到一半中斷也不會白翻。
+    """
+    prev = prev or {}
     started = time.time()
     global MATH_RE
     MATH_RE = LATEX_RE if doc["source"] == "arxiv" else NO_MATCH_RE
@@ -335,17 +340,15 @@ def translate_doc(doc_path: Path, model: str, limit: int | None = None) -> dict:
 
     result = {
         "schema": 1,
-        "doc": doc_path.name,
+        "doc": name,
         "title": doc.get("title"),
         "model": model,
         "glossary": glossary,
         "blocks": dict(prev.get("blocks", {})) if prev.get("model") == model else {},
+        "title_zh": prev.get("title_zh") if prev.get("model") == model else None,
     }
-    if result["blocks"] == {} and doc.get("title"):
-        title = translate_block({"type": "heading", "text": doc["title"]}, glossary, "", model)
-        result["title_zh"] = title.get("text")
-    else:
-        result["title_zh"] = prev.get("title_zh")
+    if not result["title_zh"] and doc.get("title"):
+        result["title_zh"] = translate_block({"type": "heading", "text": doc["title"]}, glossary, "", model).get("text")
 
     todo = [b for b in doc["blocks"] if b["translate"]]
     if limit:
@@ -368,12 +371,25 @@ def translate_doc(doc_path: Path, model: str, limit: int | None = None) -> dict:
         retry = f" 重試{r['attempts'] - 1}次" if r["attempts"] > 1 else ""
         print(f"  [{i}/{len(todo)}] {mark}{block['id']:<5} {block['type']:<9} {r['seconds']:>5}s{retry}", flush=True)
         context = source_text
-        # 每段都寫檔：長論文跑到一半中斷也不會白翻。
-        out_path.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+        if on_progress:
+            on_progress(result, i, len(todo))
 
     result["stats"] = stats(doc, result, todo, time.time() - started, done_now)
     result["finished_at"] = _now()
-    out_path.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    return result
+
+
+def translate_doc(doc_path: Path, model: str, limit: int | None = None) -> dict:
+    """命令列用：讀 data/reader/ 的文件，譯文存在旁邊的 .zh.json。"""
+    doc = json.loads(doc_path.read_text(encoding="utf-8"))
+    out_path = _out_path(doc_path)
+    prev = json.loads(out_path.read_text(encoding="utf-8")) if out_path.exists() else {}
+
+    def save(result, done, total):
+        out_path.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+
+    result = translate(doc, model, prev, limit, on_progress=save, name=doc_path.name)
+    save(result, None, None)
     return result
 
 

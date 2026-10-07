@@ -50,3 +50,46 @@ export async function recordInteraction(source, sourceId, action) {
   if (!res.ok) throw new Error(`interactions -> ${res.status}`);
   return res.json();
 }
+
+// ---------------- 深讀 ----------------
+
+// 送出非 GET 請求的小工具；後端回 4xx 時把錯誤說明（detail）帶給呼叫端顯示。
+async function send(method, path, body) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || `${path} -> ${res.status}`);
+  return data;
+}
+
+// 加入深讀清單：可以傳網址，也可以傳手機分享時的整段文字（後端會從中找出連結）。
+export function addReading(urlOrText) {
+  return send("POST", "/reading", { url: urlOrText });
+}
+
+export function getReadingList() {
+  return request("/reading");
+}
+
+export function getReading(id) {
+  return request(`/reading/${id}`);
+}
+
+export function getReaderWorker() {
+  return request("/reading/worker");
+}
+
+export function saveReadingProgress(id, readProgress) {
+  return send("PATCH", `/reading/${id}`, { read_progress: readProgress });
+}
+
+export function retryReading(id) {
+  return send("POST", `/reading/${id}/retry`);
+}
+
+export function deleteReading(id) {
+  return send("DELETE", `/reading/${id}`);
+}

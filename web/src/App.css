@@ -59,7 +59,7 @@
 .bottom-nav {
   flex: none;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   padding: 6px 8px calc(10px + env(safe-area-inset-bottom, 0));
   background: var(--surface);
   border-top: 1px solid var(--line);

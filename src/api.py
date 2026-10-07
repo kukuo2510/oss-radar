@@ -8,6 +8,7 @@ recommend）已經把「真正的工作」做完了，這個模組只是把它�
 
 import gc
 import os
+from datetime import datetime, timezone
 from typing import Optional
 
 import numpy as np
@@ -21,9 +22,17 @@ import embed as embed_module
 import ingest_arxiv
 import ingest_github
 import ingest_hf
+import reader_fetch
 import report_agent
 import trend
 from db import (
+    add_reading_item,
+    count_pending_reading_items,
+    delete_reading_item,
+    get_reading_item,
+    get_worker_status,
+    list_reading_items,
+    update_reading_item,
     get_all_embeddings,
     get_item,
     get_item_tags,
@@ -203,6 +212,92 @@ def create_interaction(payload: InteractionIn):
     if payload.action not in ("like", "skip"):
         raise HTTPException(400, "action must be 'like' or 'skip'")
     record_interaction(payload.source, payload.source_id, payload.action)
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------- 深讀
+# API 只負責收連結、提供清單與閱讀內容；抓取和翻譯由使用者電腦上的 reader_worker.py 做。
+
+MAX_PENDING_READING = 30  # 佇列上限：API 沒有登入機制，避免被大量塞連結時本機 worker 一直翻
+WORKER_ONLINE_SECONDS = 2 * 3600  # 心跳在這段時間內，前端就顯示「翻譯站在線」
+
+
+class ReadingIn(BaseModel):
+    """可以直接是網址，也可以是手機分享時帶來的一整段文字（裡面含網址）。"""
+
+    url: str
+
+
+class ReadingPatch(BaseModel):
+    read_progress: float
+
+
+def normalize_reading_url(raw: str) -> str:
+    """從分享文字中找出支援的連結並正規化（去掉 ?s=20 這類追蹤參數），同一篇不會重複加入。"""
+    m = reader_fetch.X_STATUS_RE.search(raw)
+    if m:
+        return f"https://x.com/{m.group(1) or 'i'}/status/{m.group(2)}"
+    if "arxiv.org" in raw or reader_fetch.ARXIV_ID_RE.fullmatch(raw.strip()):
+        m = reader_fetch.ARXIV_ID_RE.search(raw)
+        if m:
+            return f"https://arxiv.org/abs/{m.group(1)}"
+    raise HTTPException(400, "目前只支援 X（x.com／twitter.com）貼文與 arXiv 論文連結")
+
+
+@app.post("/reading")
+def add_reading(payload: ReadingIn):
+    url = normalize_reading_url(payload.url)
+    if count_pending_reading_items() >= MAX_PENDING_READING:
+        raise HTTPException(429, "待處理的文章太多了，等翻譯站消化一些再加")
+    return add_reading_item(url)
+
+
+@app.get("/reading")
+def reading_list():
+    return list_reading_items()
+
+
+@app.get("/reading/worker")
+def reading_worker_status():
+    """翻譯站（使用者電腦上的 worker）最後一次回報的時間與模型。"""
+    status = get_worker_status()
+    if not status:
+        return {"online": False, "last_seen": None, "model": None}
+    age = (datetime.now(timezone.utc) - datetime.fromisoformat(status["last_seen"])).total_seconds()
+    return {"online": age < WORKER_ONLINE_SECONDS, **status}
+
+
+@app.get("/reading/{item_id}")
+def reading_detail(item_id: int):
+    item = get_reading_item(item_id, with_content=True)
+    if not item:
+        raise HTTPException(404, "reading item not found")
+    return item
+
+
+@app.patch("/reading/{item_id}")
+def update_reading(item_id: int, payload: ReadingPatch):
+    if not get_reading_item(item_id):
+        raise HTTPException(404, "reading item not found")
+    update_reading_item(item_id, read_progress=min(max(payload.read_progress, 0.0), 1.0))
+    return {"status": "ok"}
+
+
+@app.post("/reading/{item_id}/retry")
+def retry_reading(item_id: int):
+    item = get_reading_item(item_id)
+    if not item:
+        raise HTTPException(404, "reading item not found")
+    if item["status"] != "failed":
+        raise HTTPException(409, "只有失敗的項目可以重試")
+    update_reading_item(item_id, status="queued", error=None)
+    return {"status": "ok"}
+
+
+@app.delete("/reading/{item_id}")
+def remove_reading(item_id: int):
+    if not delete_reading_item(item_id):
+        raise HTTPException(404, "reading item not found")
     return {"status": "ok"}
 
 

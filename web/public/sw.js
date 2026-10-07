@@ -1,7 +1,7 @@
 // 最精簡的 Service Worker：只快取「App 外殼」（app shell），
 // 讓使用者「加到主畫面」後，就算網路不穩也能立刻啟動。
 // 刻意不快取任何 API 回應——這個 App 的核心價值就是資料要即時，離線同步不在規劃範圍內。
-const CACHE = "oss-radar-shell-v3";
+const CACHE = "oss-radar-shell-v4";
 const SHELL = ["/", "/manifest.json", "/icon.svg"];
 
 // 安裝階段：把 App 外殼需要的檔案全部快取起來，並立即跳過等待（skipWaiting）

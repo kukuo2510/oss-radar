@@ -145,7 +145,7 @@ def fetch_recommendations(conn) -> list[tuple]:
     rows = []
     for r in results:
         row = conn.execute(
-            "SELECT title, url FROM items WHERE source = ? AND source_id = ?",
+            "SELECT title, url FROM items WHERE source = %s AND source_id = %s",
             (r["source"], r["source_id"]),
         ).fetchone()
         if row:

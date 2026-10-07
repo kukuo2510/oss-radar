@@ -1,10 +1,9 @@
 # Render Blueprint for the OSS Radar API (FastAPI backend).
 # Deploy: push this repo, then in Render "New +" -> "Blueprint" -> point at this repo.
 #
-# KNOWN LIMITATION: the free plan has no persistent disk, so data/oss_radar.db can
-# be wiped on redeploy/instance migration. Fine for a portfolio demo; if that
-# actually bites, either add a paid Render Disk mounted at ./data, or migrate to a
-# free external Postgres (Neon/Supabase) - see README "部署" section.
+# Data lives in Neon Postgres (free plan), not on Render's disk: the free plan has no
+# persistent disk, so a local SQLite file would be wiped on redeploy. Set DATABASE_URL
+# below to Neon's *pooled* connection string.
 #
 # Exact field names may drift from Render's current schema; verify against
 # https://render.com/docs/blueprint-spec before relying on this as-is.
@@ -22,6 +21,8 @@ services:
         value: "*" # replace with your deployed frontend URL, e.g. https://oss-radar.vercel.app
       - key: ADMIN_TOKEN
         generateValue: true # Render generates a random secret; copy it into the GitHub Actions secret below
+      - key: DATABASE_URL
+        sync: false # Neon 的 pooled 連線字串（含密碼），部署後在 Render Dashboard 手動貼上，不寫進 git
       - key: ANTHROPIC_API_KEY
         sync: false # 不寫在這裡（會進 git 歷史），部署後要自己去 Render Dashboard 的
         # Environment 分頁手動貼上實際的 key 值——report_agent.py（narrate 這個

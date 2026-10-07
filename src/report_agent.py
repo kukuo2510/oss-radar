@@ -82,7 +82,7 @@ def main() -> None:
     with get_connection() as conn:
         for c in to_narrate:
             row = conn.execute(
-                "SELECT title, description, category FROM items WHERE source = ? AND source_id = ?",
+                "SELECT title, description, category FROM items WHERE source = %s AND source_id = %s",
                 (c["source"], c["source_id"]),
             ).fetchone()
             if not row:
@@ -90,7 +90,7 @@ def main() -> None:
             title, description, category = row
             # 只取分數最高的前 3 個標籤放進提示詞，避免標籤太多反而稀釋掉重點。
             tags = [t[0] for t in conn.execute(
-                "SELECT tag FROM item_tags WHERE source = ? AND source_id = ? ORDER BY score DESC LIMIT 3",
+                "SELECT tag FROM item_tags WHERE source = %s AND source_id = %s ORDER BY score DESC LIMIT 3",
                 (c["source"], c["source_id"]),
             ).fetchall()]
 

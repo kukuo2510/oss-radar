@@ -82,6 +82,9 @@ embedding model 來改善。
    部署後實測量出來的），回傳還剩幾筆，呼叫端（GitHub Actions）迴圈呼叫直到清空。
 4. **免費方案沒有持久化硬碟**：`data/oss_radar.db` 在重新部署時會被清空。對個人使用來說可以接受；
    真的常常需要保留資料的話，選項是加 Render 付費 Disk，或換成免費的外部 Postgres（Neon/Supabase）。
+   **2026-10-07 已解決**：改用 Neon 免費 Postgres（region aws-us-west-2，跟 Render 預設的 Oregon 同區）。
+   選 Neon 不選 Supabase，是因為 Supabase 免費專案一週沒活動會被暫停。`db.py` 刻意每次開短連線、
+   不用常駐連線池，讓 Neon 閒置 5 分鐘後能休眠，避免燒光每月 100 CU-hours 的免費額度。
 5. **任何 push 都會觸發重新部署，包含只改文件**：Render 預設對 master 的每次 push 都自動重新部署，
    哪怕只是改 README、沒動到任何程式邏輯，一樣會讓資料庫被清空。解法：Render Settings 裡把
    Auto-Deploy 關掉，改成後端程式碼真的有變動時才手動按 Deploy。

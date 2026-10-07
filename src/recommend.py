@@ -112,7 +112,7 @@ def main() -> None:
     with get_connection() as conn:
         for r in results:
             title, url = conn.execute(
-                "SELECT title, url FROM items WHERE source = ? AND source_id = ?",
+                "SELECT title, url FROM items WHERE source = %s AND source_id = %s",
                 (r["source"], r["source_id"]),
             ).fetchone()
             print(f"[{r['score']:.3f} | {r['basis']}] ({r['source']}) {title}")

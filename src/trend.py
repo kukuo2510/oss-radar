@@ -55,7 +55,7 @@ def compute_for_source(conn, source: str) -> list[dict]:
     不夠的走「冷啟動」路線；兩組分數各自轉成百分位排名後再合併回傳。
     """
     snapshot_rows = conn.execute(
-        "SELECT source_id, metric, snapshot_at FROM metric_snapshots WHERE source = ? ORDER BY snapshot_at",
+        "SELECT source_id, metric, snapshot_at FROM metric_snapshots WHERE source = %s ORDER BY snapshot_at",
         (source,),
     ).fetchall()
 

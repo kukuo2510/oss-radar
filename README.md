@@ -20,7 +20,7 @@
 
 ## Tech Stack
 
-- Python + FastAPI、SQLite
+- Python + FastAPI、Postgres（Neon 免費方案）
 - fastembed（embedding）
 - APScheduler / GitHub Actions（排程）
 - React + Vite（前端 PWA）

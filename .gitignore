@@ -6,3 +6,4 @@ data/*.html
 data/*.log
 .env
 *.local.md
+.neon

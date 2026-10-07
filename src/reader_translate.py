@@ -315,6 +315,122 @@ def translate_block(block: dict, glossary: list[dict], context: str, model: str)
 
 # ---------------------------------------------------------------- 主流程
 
+# ---------------------------------------------------------------- 重點整理
+
+SUMMARY_CHUNK_CHARS = 7000  # 一次給模型看的原文長度（num_ctx 8192 的安全範圍）
+SUMMARY_PROMPT = """以下是一篇英文文章的段落，每段開頭的 [b12] 是段落編號。
+請用繁體中文（台灣用語）整理，只根據這些段落，不要加入原文沒有的內容：
+- one_line：一句話說明這篇在講什麼（40 字以內）
+- key_points：{n} 個最重要的重點，每點 60 字以內，盡量具體（方法、數字、結論）；
+  每點附上依據的段落編號 1～3 個（必須是上面出現過的編號）
+專有名詞保留英文。只輸出 JSON：
+{{"one_line": "...", "key_points": [{{"text": "...", "blocks": ["b12", "b15"]}}]}}
+{glossary}
+段落：
+"""
+REDUCE_PROMPT = """以下是同一篇英文文章分段整理出來的重點（繁體中文），每點後面的 [b12] 是原文段落編號。
+請合併成整篇文章的重點整理，去掉重複、保留最重要的：
+- one_line：一句話說明整篇在講什麼（40 字以內）
+- key_points：{n} 個重點，每點 60 字以內；blocks 沿用原本附的段落編號（1～3 個）
+只輸出 JSON：{{"one_line": "...", "key_points": [{{"text": "...", "blocks": ["b12"]}}]}}
+
+分段重點：
+"""
+
+
+def _summary_source_blocks(doc: dict) -> list[dict]:
+    """拿來整理重點的段落：一般文字類區塊（不含程式碼、提示詞、公式、參考文獻那類短句）。"""
+    out = []
+    for b in doc["blocks"]:
+        if b["type"] in {"paragraph", "quote", "heading", "list"}:
+            text = b.get("text") or " ".join(b.get("items", []))
+            if text and text != "References" and not text.startswith("（共 "):
+                out.append({"id": b["id"], "text": text})
+    return out
+
+
+def _parse_summary(raw: str, valid_ids: set[str]) -> tuple[dict | None, list[str]]:
+    """解析並檢查模型給的 JSON：重點至少 2 點、要有中文、引用的段落編號必須真的存在。"""
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None, ["輸出不是合法的 JSON"]
+    issues = []
+    one_line = to_taiwan(str(data.get("one_line", "")).strip())
+    points = []
+    for p in data.get("key_points", []) if isinstance(data, dict) else []:
+        if not isinstance(p, dict):
+            continue
+        text = to_taiwan(str(p.get("text", "")).strip())
+        cited = [str(x).strip().strip("[]") for x in p.get("blocks", [])]
+        cited = [x for x in dict.fromkeys(cited) if x in valid_ids][:3]
+        if text and CJK_RE.search(text):
+            points.append({"text": text, "blocks": cited})
+    if not one_line or not CJK_RE.search(one_line):
+        issues.append("缺少中文的 one_line")
+    if len(points) < 2:
+        issues.append("重點少於 2 點")
+    uncited = sum(1 for p in points if not p["blocks"])
+    if points and uncited > len(points) // 2:
+        issues.append("多數重點沒有附上存在的段落編號")
+    if issues:
+        return None, issues
+    return {"one_line": one_line, "key_points": points}, []
+
+
+def _ask_summary(model: str, prompt: str, valid_ids: set[str]) -> dict | None:
+    messages = [{"role": "user", "content": prompt}]
+    for _ in range(3):
+        raw = chat(model, messages, json_mode=True, num_predict=1500)
+        summary, issues = _parse_summary(raw, valid_ids)
+        if summary:
+            return summary
+        messages += [
+            {"role": "assistant", "content": raw},
+            {"role": "user", "content": "有問題：" + "；".join(issues) + "。請修正後重新輸出完整 JSON。"},
+        ]
+    return None
+
+
+def summarize(doc: dict, glossary: list[dict], model: str) -> dict | None:
+    """本機模型整理重點，每點附上依據的原文段落編號（閱讀頁用來標記重點段落、點了跳過去）。
+
+    依據英文原文整理（不是譯文），避免翻譯錯誤被帶進重點。文章太長就分段整理再合併。
+    """
+    blocks = _summary_source_blocks(doc)
+    if not blocks:
+        return None
+    valid_ids = {b["id"] for b in blocks}
+    terms = [t for t in glossary if not t["keep_english"]][:20]
+    glossary_hint = ("術語譯名：" + "、".join(f"{t['en']}→{t['zh']}" for t in terms) + "\n") if terms else ""
+
+    chunks, cur, size = [], [], 0
+    for b in blocks:
+        line = f"[{b['id']}] {b['text'][:1500]}"
+        if cur and size + len(line) > SUMMARY_CHUNK_CHARS:
+            chunks.append(cur)
+            cur, size = [], 0
+        cur.append(line)
+        size += len(line)
+    if cur:
+        chunks.append(cur)
+
+    if len(chunks) == 1:
+        prompt = SUMMARY_PROMPT.format(n="3～5", glossary=glossary_hint) + "\n".join(chunks[0])
+        return _ask_summary(model, prompt, valid_ids)
+
+    # 分段整理（每段 2～3 點）再合併；合併時模型看不到原文，只沿用各段附的段落編號。
+    notes = []
+    for i, chunk in enumerate(chunks, 1):
+        print(f"  整理重點：第 {i}/{len(chunks)} 段", flush=True)
+        part = _ask_summary(model, SUMMARY_PROMPT.format(n="2～3", glossary=glossary_hint) + "\n".join(chunk), valid_ids)
+        if part:
+            notes += [f"- {p['text']} " + " ".join(f"[{bid}]" for bid in p["blocks"]) for p in part["key_points"]]
+    if not notes:
+        return None
+    return _ask_summary(model, REDUCE_PROMPT.format(n="4～6") + "\n".join(notes), valid_ids)
+
+
 def _out_path(doc_path: Path) -> Path:
     return doc_path.with_name(doc_path.stem + ".zh.json")
 
@@ -346,6 +462,7 @@ def translate(doc: dict, model: str, prev: dict | None = None, limit: int | None
         "glossary": glossary,
         "blocks": dict(prev.get("blocks", {})) if prev.get("model") == model else {},
         "title_zh": prev.get("title_zh") if prev.get("model") == model else None,
+        "summary": prev.get("summary") if prev.get("model") == model else None,
     }
     if not result["title_zh"] and doc.get("title"):
         result["title_zh"] = translate_block({"type": "heading", "text": doc["title"]}, glossary, "", model).get("text")
@@ -373,6 +490,10 @@ def translate(doc: dict, model: str, prev: dict | None = None, limit: int | None
         context = source_text
         if on_progress:
             on_progress(result, i, len(todo))
+
+    if not result.get("summary") and not limit:
+        print("整理重點…", flush=True)
+        result["summary"] = summarize(doc, glossary, model)
 
     result["stats"] = stats(doc, result, todo, time.time() - started, done_now)
     result["finished_at"] = _now()

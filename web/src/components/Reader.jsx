@@ -180,6 +180,34 @@ function Block({ block, tr, mode }) {
   }
 }
 
+// 重點整理：本機模型依原文整理的一句話＋幾個重點，每點附上依據的原文段落；點重點跳到那段。
+function SummaryCard({ summary, onJump }) {
+  if (!summary?.key_points?.length) return null;
+  return (
+    <section className="r-summary" aria-label="重點整理">
+      <div className="r-summary-head">
+        <span className="r-summary-title">重點整理</span>
+        <span className="r-summary-note">本機 AI 依原文整理，可能有誤</span>
+      </div>
+      {summary.one_line && <p className="r-summary-line">{summary.one_line}</p>}
+      <ol className="r-summary-points">
+        {summary.key_points.map((p, i) => (
+          <li key={i}>
+            {p.blocks?.length ? (
+              <button onClick={() => onJump(p.blocks[0])}>
+                <span>{p.text}</span>
+                <span className="r-summary-jump">看原段落 ↓</span>
+              </button>
+            ) : (
+              <span>{p.text}</span>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 export default function Reader({ id, onBack }) {
   const [item, setItem] = useState(null);
   const [error, setError] = useState(null);
@@ -237,6 +265,21 @@ export default function Reader({ id, onBack }) {
   const okCount = Object.values(trBlocks).filter((b) => b.status === "ok").length;
   const zhChars = Object.values(trBlocks).reduce((n, b) => n + (b.text?.length || 0), 0);
   const minutes = Math.max(1, Math.round(zhChars / 400));
+
+  // 區塊 id → 它是第幾個重點的依據（一段可能同時支撐好幾個重點）。
+  const keyMap = {};
+  (tr?.summary?.key_points || []).forEach((p, i) =>
+    (p.blocks || []).forEach((bid) => (keyMap[bid] = [...(keyMap[bid] || []), i + 1]))
+  );
+
+  function jumpTo(blockId) {
+    const el = document.getElementById(`blk-${blockId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    el.classList.remove("r-flash");
+    void el.offsetWidth; // 重新觸發閃爍動畫
+    el.classList.add("r-flash");
+  }
 
   return (
     <div className="reader" data-theme={theme} style={{ "--read-size": `${settings.fontSize}px` }}>
@@ -320,6 +363,8 @@ export default function Reader({ id, onBack }) {
               ))}
             </div>
 
+            <SummaryCard summary={tr?.summary} onJump={jumpTo} />
+
             <div className="seg seg-wide" role="group" aria-label="閱讀模式">
               {MODES.map((m) => (
                 <button
@@ -335,7 +380,10 @@ export default function Reader({ id, onBack }) {
             {settings.mode === "zh" && <p className="reader-tip">點任一段落可展開該段原文。</p>}
 
             {blocks.map((b) => (
-              <Block key={b.id} block={b} tr={trBlocks[b.id]} mode={settings.mode} />
+              <div key={b.id} id={`blk-${b.id}`} className={keyMap[b.id] ? "r-keyblock" : undefined}>
+                {keyMap[b.id] && <span className="r-keytag">重點 {keyMap[b.id].join("、")}</span>}
+                <Block block={b} tr={trBlocks[b.id]} mode={settings.mode} />
+              </div>
             ))}
 
             <aside className="reader-credit">

@@ -487,9 +487,17 @@ def count_pending_reading_items() -> int:
 
 
 def list_reading_items() -> list[dict]:
+    """清單頁用：不帶全文，只多帶重點整理的那一句話（one_line），讓使用者不用點進去就知道在講什麼。"""
+    cols = ", ".join(f"reading_items.{c.strip()}" for c in READING_LIST_COLUMNS.split(","))
     with get_connection() as conn:
         conn.row_factory = dict_row
-        return conn.execute(f"SELECT {READING_LIST_COLUMNS} FROM reading_items ORDER BY created_at DESC").fetchall()
+        return conn.execute(
+            f"""
+            SELECT {cols}, reading_docs.translation -> 'summary' ->> 'one_line' AS one_line
+            FROM reading_items LEFT JOIN reading_docs ON reading_docs.item_id = reading_items.id
+            ORDER BY reading_items.created_at DESC
+            """
+        ).fetchall()
 
 
 def get_reading_item(item_id: int, with_content: bool = False) -> dict | None:
@@ -595,3 +603,17 @@ def get_worker_status() -> dict | None:
     with get_connection() as conn:
         conn.row_factory = dict_row
         return conn.execute("SELECT model, last_seen FROM reader_worker WHERE id = 1").fetchone()
+
+
+def reading_ids_missing_summary() -> list[int]:
+    """已經翻好、但譯文裡還沒有重點整理的項目（重點整理功能加入前翻好的文章要補）。"""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT reading_docs.item_id FROM reading_docs
+            JOIN reading_items ON reading_items.id = reading_docs.item_id
+            WHERE reading_items.status = 'ready' AND reading_docs.translation IS NOT NULL
+              AND jsonb_typeof(reading_docs.translation -> 'summary') IS DISTINCT FROM 'object'
+            """
+        ).fetchall()
+    return [r[0] for r in rows]

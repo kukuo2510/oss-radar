@@ -101,6 +101,21 @@ def main() -> int:
         db.worker_heartbeat(args.model)
     print(f"\n佇列處理完畢，本次處理 {handled} 筆", flush=True)
 
+    # 補做重點整理：這個功能加入之前就翻好的文章，譯文裡沒有 summary。
+    for item_id in db.reading_ids_missing_summary():
+        try:
+            doc, translation = db.get_reading_doc(item_id)
+            print(f"\n=== #{item_id} 補做重點整理", flush=True)
+            reader_translate.MATH_RE = (
+                reader_translate.LATEX_RE if doc["source"] == "arxiv" else reader_translate.NO_MATCH_RE
+            )
+            translation["summary"] = reader_translate.summarize(doc, translation.get("glossary", []), args.model)
+            if translation["summary"]:
+                db.save_reading_translation(item_id, translation)
+        except Exception:
+            traceback.print_exc()
+    db.worker_heartbeat(args.model)
+
     if not args.no_narrate:
         try:
             report_agent.main()

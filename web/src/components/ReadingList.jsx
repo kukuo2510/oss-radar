@@ -190,6 +190,7 @@ export default function ReadingList({ onOpen, refreshKey }) {
                 <span className="reading-title">{title}</span>
               )}
               {it.title_zh && it.title && <span className="reading-subtitle">{it.title}</span>}
+              {it.one_line && <p className="reading-oneline">{it.one_line}</p>}
               <a className="source-link" href={it.url} target="_blank" rel="noreferrer">
                 {it.url.replace(/^https?:\/\//, "")}
                 <ExternalIcon />

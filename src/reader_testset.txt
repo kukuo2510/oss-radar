@@ -1,0 +1,11 @@
+# 深讀功能 M1 的抓取測試集：涵蓋各種來源與抽取路徑（每行一篇，# 後面是說明）
+2610.08785                                          # arXiv，有 HTML 版（公式很多）
+2610.08789                                          # arXiv，HTML 轉換失敗 → PDF 備援
+2610.08782
+2610.08781
+1706.03762                                          # 舊論文（Attention Is All You Need），檢查 HTML／PDF 哪條路
+https://x.com/0xMovez/status/2107515767986217026    # 分享貼文引用 X 長文 → 應改抓被引用的長文
+https://x.com/eng_khairallah1/status/2107440377485766696  # 同上，另一位作者
+https://x.com/0xMovez/status/2104216919033192746    # 直接就是長文
+https://x.com/i/status/2102801469976248500          # 長篇一般貼文（note tweet）
+https://x.com/i/status/2103875898349088830          # 一般貼文

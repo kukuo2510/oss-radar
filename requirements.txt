@@ -10,3 +10,5 @@ python-dotenv
 psycopg[binary]==3.3.6
 psycopg-pool==3.3.3
 opencc==1.4.2
+beautifulsoup4==4.15.0
+pdfminer.six==20260107

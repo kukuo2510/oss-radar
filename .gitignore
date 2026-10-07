@@ -7,3 +7,4 @@ data/*.log
 .env
 *.local.md
 .neon
+data/reader/

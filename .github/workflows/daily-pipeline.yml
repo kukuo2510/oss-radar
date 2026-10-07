@@ -63,9 +63,11 @@ jobs:
 
       # Off by default: it calls the paid Claude API from Render. The step, the
       # /admin/run-step/narrate endpoint and report_agent.py are kept as an opt-in
-      # hook - to turn it back on, set ANTHROPIC_API_KEY in Render's Environment and
-      # add a repo variable ENABLE_NARRATE=true (Settings -> Secrets and variables ->
-      # Actions -> Variables).
+      # hook - to turn it back on, set ANTHROPIC_API_KEY and REPORT_AGENT_PROVIDER=claude
+      # in Render's Environment (the default provider is the local Ollama, which Render
+      # can't reach), and add a repo variable ENABLE_NARRATE=true (Settings -> Secrets
+      # and variables -> Actions -> Variables). Day to day, narrations are written by
+      # running report_agent.py on the local machine with Ollama instead.
       - name: Narrate top recommendations (LLM, report_agent.py)
         if: vars.ENABLE_NARRATE == 'true'
         run: |

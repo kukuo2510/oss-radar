@@ -15,6 +15,11 @@ export function getRecommendations(limit = 20) {
   return request(`/recommendations?limit=${limit}`);
 }
 
+// 取得熱門排行（依成長率的熱度分數），首頁「熱門模型」從這裡篩出 Hugging Face 項目。
+export function getTrending(limit = 20) {
+  return request(`/trending?limit=${limit}`);
+}
+
 // 取得所有標籤與各自的使用次數，給篩選用的標籤清單。
 export function getTags() {
   return request("/tags");

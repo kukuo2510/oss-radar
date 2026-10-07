@@ -1,36 +1,46 @@
+/* 設計系統「研究筆記本」：紙白、墨色、一個深藍主色（操作）、一點琥珀（值得注意的訊號）。
+   元件一律用這裡的語意變數，不直接寫色碼；深色模式只要換掉這組變數。 */
 :root {
-  --bg: #ece0bd;
-  --surface: #f7ecd2;
-  --surface-2: #f0e2ba;
-  --text: #2b2118;
-  --text-muted: #7a6a4c;
-  --border: #c9a86a;
-  --accent: #a3272a;
-  --accent-bg: rgba(163, 39, 42, 0.12);
-  --like: #a3272a;
-  --skip: #4a4038;
-  --gold: #b8863f;
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --tint: #eef2f7;
+  --ink: #0f172a;
+  --ink-2: #475569;
+  --ink-3: #64748b;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --primary: #1e3a5f;
+  --on-primary: #ffffff;
+  --accent: #a16207;
+  --danger: #b42318;
 
-  font: 16px/1.6 "Noto Serif TC", "Noto Serif SC", "PMingLiU", serif;
+  --font-ui: "IBM Plex Sans", "Noto Sans TC", system-ui, sans-serif;
+  --font-cjk-heading: "Noto Sans TC", "IBM Plex Sans", sans-serif;
+  --font-read: "Noto Serif TC", "Source Serif 4", serif;
+  --font-latin-serif: "Source Serif 4", "Noto Serif TC", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  font: 16px/1.6 var(--font-ui);
   color-scheme: light dark;
-  color: var(--text);
+  color: var(--ink);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1c1712;
-    --surface: #2a2118;
-    --surface-2: #241c14;
-    --text: #ecdfc0;
-    --text-muted: #a8977a;
-    --border: #6b5330;
-    --accent: #d1524a;
-    --accent-bg: rgba(209, 82, 74, 0.2);
-    --like: #d1524a;
-    --skip: #a8977a;
-    --gold: #d4af6a;
+    --bg: #0b1220;
+    --surface: #121c2e;
+    --tint: #16233a;
+    --ink: #e5eaf2;
+    --ink-2: #a3b1c6;
+    --ink-3: #8a99b0;
+    --line: #24324a;
+    --line-strong: #34465f;
+    --primary: #9cc0ea;
+    --on-primary: #0e1726;
+    --accent: #e3a857;
+    --danger: #f97066;
   }
 }
 
@@ -40,6 +50,7 @@
 
 body {
   margin: 0;
+  background: var(--bg);
 }
 
 h1,
@@ -56,4 +67,28 @@ button {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
 }

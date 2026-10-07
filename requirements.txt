@@ -8,4 +8,5 @@ uvicorn==0.52.4
 anthropic
 python-dotenv
 psycopg[binary]==3.3.6
+psycopg-pool==3.3.3
 opencc==1.4.2

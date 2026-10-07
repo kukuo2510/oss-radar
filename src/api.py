@@ -28,7 +28,9 @@ from db import (
     get_item,
     get_item_tags,
     get_items,
+    get_items_by_keys,
     get_narrations_map,
+    get_tags_for_keys,
     get_tags_with_counts,
     get_top_trend_scores,
     init_db,
@@ -96,6 +98,24 @@ def hydrate(source: str, source_id: str, extra: dict | None = None) -> dict | No
     return item
 
 
+def hydrate_many(rows: list[tuple[str, str, dict]]) -> list[dict]:
+    """hydrate() 的批次版：(source, source_id, extra) 清單一次查完項目與標籤，保留原本順序，
+    已不存在的項目直接略過。清單型端點都用這個——資料庫在 Neon 上，逐筆查詢的網路往返
+    會讓一頁 20 筆的推薦要等 20 秒以上。"""
+    keys = [(source, source_id) for source, source_id, _ in rows]
+    items = get_items_by_keys(keys)
+    tags = get_tags_for_keys(keys)
+    results = []
+    for source, source_id, extra in rows:
+        item = items.get((source, source_id))
+        if not item:
+            continue
+        item["tags"] = tags.get((source, source_id), [])
+        item.update(extra)
+        results.append(item)
+    return results
+
+
 @app.get("/items")
 def list_items(
     source: Optional[str] = None,
@@ -105,8 +125,9 @@ def list_items(
 ):
     """依來源（source）/標籤（tag）分頁列出項目清單，每筆都會補上 tags。"""
     items = get_items(source=source, tag=tag, limit=limit, offset=offset)
+    tags = get_tags_for_keys([(item["source"], item["source_id"]) for item in items])
     for item in items:
-        item["tags"] = get_item_tags(item["source"], item["source_id"])
+        item["tags"] = tags.get((item["source"], item["source_id"]), [])
     return items
 
 
@@ -130,16 +151,13 @@ def trending(limit: int = Query(20, le=100)):
     """取得目前熱門排行榜，附上每個項目的分數、判斷依據（basis）與 LLM 生成的解說文字。"""
     rows = get_top_trend_scores(limit=limit)
     narrations = get_narrations_map()
-    results = [
-        hydrate(r["source"], r["source_id"], {
+    return hydrate_many([
+        (r["source"], r["source_id"], {
             "score": r["score"], "basis": r["basis"],
             "narration": narrations.get((r["source"], r["source_id"])),
         })
         for r in rows
-    ]
-    # hydrate() 在項目已被刪除等情況下可能回傳 None，這裡把這些空值濾掉，
-    # 避免回傳給前端的清單裡混雜 null。
-    return [r for r in results if r]
+    ])
 
 
 @app.get("/recommendations")
@@ -147,14 +165,13 @@ def recommendations(limit: int = Query(20, le=100)):
     """依照使用者過去的按讚/略過紀錄，計算個人化推薦清單。"""
     rows = compute_recommendations(top_n=limit)
     narrations = get_narrations_map()
-    results = [
-        hydrate(r["source"], r["source_id"], {
+    return hydrate_many([
+        (r["source"], r["source_id"], {
             "score": r["score"], "basis": r["basis"],
             "narration": narrations.get((r["source"], r["source_id"])),
         })
         for r in rows
-    ]
-    return [r for r in results if r]
+    ])
 
 
 @app.get("/search")
@@ -177,8 +194,7 @@ def search(q: str, limit: int = Query(20, le=100)):
         scored.append((row["source"], row["source_id"], cosine_sim(query_vector, vec)))
     scored.sort(key=lambda t: t[2], reverse=True)
 
-    results = [hydrate(source, source_id, {"score": score}) for source, source_id, score in scored[:limit]]
-    return [r for r in results if r]
+    return hydrate_many([(source, source_id, {"score": score}) for source, source_id, score in scored[:limit]])
 
 
 @app.post("/interactions")

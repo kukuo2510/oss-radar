@@ -3,13 +3,15 @@ report / interact）共用同一份 Postgres 資料庫（Neon），這個模組�
 讀寫函式，其他模組不直接寫 SQL，一律透過這裡提供的函式存取資料庫。
 """
 
+import atexit
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 import psycopg
 from dotenv import load_dotenv
-from psycopg.rows import dict_row
+from psycopg.rows import dict_row, tuple_row
+from psycopg_pool import ConnectionPool
 
 # 本機開發時從專案根目錄的 .env 讀 DATABASE_URL（neon link 產生，已 gitignore）；
 # 部署到 Render 時則由 Render Dashboard 設定同名環境變數，load_dotenv 不會覆蓋它。
@@ -89,18 +91,43 @@ CREATE INDEX IF NOT EXISTS metric_snapshots_source_idx ON metric_snapshots (sour
 """
 
 
-def get_connection() -> psycopg.Connection:
-    """建立一個新的資料庫連線，搭配 with 使用：離開區塊時自動 commit 並關閉連線。
+# 連線池：每次查詢都重新連線的話，光 TLS + 認證就要幾百毫秒，一頁要查幾十次（hydrate 對每個
+# 項目各查一次），實測 /recommendations 從 SQLite 時期的瞬間變成 44 秒。所以改用連線池重用連線，
+# 但 min_size=0 + max_idle=60：閒置 60 秒的連線會被關掉、一條都不留，Neon 才能在沒人用時休眠，
+# 不會燒光免費方案每月的運算時數。
+# DATABASE_URL 是 Neon 的 pooled endpoint（PgBouncer transaction mode），所以關掉 psycopg 的
+# 自動 prepared statement（prepare_threshold=None），避免跨 PgBouncer 連線衝突。
+_pool: ConnectionPool | None = None
 
-    刻意每次都開新連線、用完就關，而不是維持常駐連線池：Neon 免費方案在沒有連線
-    5 分鐘後才會休眠，常駐連線會讓資料庫一直醒著，把每月的免費運算時數燒光。
-    DATABASE_URL 用的是 Neon 的 pooled endpoint（PgBouncer transaction mode），
-    所以關掉 psycopg 的自動 prepared statement（prepare_threshold=None），避免跨連線衝突。
-    """
-    url = os.environ.get("DATABASE_URL")
-    if not url:
-        raise RuntimeError("DATABASE_URL 沒有設定：本機請在專案根目錄執行 neon link 產生 .env，部署環境請在 Render 設定環境變數。")
-    return psycopg.connect(url, prepare_threshold=None, connect_timeout=15)
+
+def _reset(conn: psycopg.Connection) -> None:
+    """連線歸還連線池時把 row_factory 還原成預設的 tuple：有些查詢會改成 dict_row，
+    不還原的話下一個借到這條連線、用 tuple 拆解結果的函式會拿到 dict 而出錯。"""
+    conn.row_factory = tuple_row
+
+
+def _get_pool() -> ConnectionPool:
+    global _pool
+    if _pool is None:
+        url = os.environ.get("DATABASE_URL")
+        if not url:
+            raise RuntimeError("DATABASE_URL 沒有設定：本機請在專案根目錄執行 neon link 產生 .env，部署環境請在 Render 設定環境變數。")
+        _pool = ConnectionPool(
+            url,
+            min_size=0,
+            max_size=4,
+            max_idle=60,
+            kwargs={"prepare_threshold": None, "connect_timeout": 15},
+            reset=_reset,
+            open=True,
+        )
+        atexit.register(_pool.close)
+    return _pool
+
+
+def get_connection():
+    """從連線池借一條連線，搭配 with 使用：離開區塊時沒出錯就 commit、出錯就 rollback，再歸還連線池。"""
+    return _get_pool().connection()
 
 
 def init_db() -> None:
@@ -256,6 +283,47 @@ def get_item(source: str, source_id: str) -> dict | None:
             "SELECT * FROM items WHERE source = %s AND source_id = %s", (source, source_id)
         ).fetchone()
         return dict(row) if row else None
+
+
+def get_items_by_keys(keys: list[tuple[str, str]]) -> dict:
+    """一次查回多個項目，回傳 (source, source_id) -> 項目欄位。
+
+    給 API 批次組裝清單用：連線到 Neon 每次查詢都有網路往返成本，逐筆查 20 個項目
+    （每筆再查一次標籤）實測要 20 秒，改成一次查完只要一次往返。
+    """
+    if not keys:
+        return {}
+    sources, ids = [k[0] for k in keys], [k[1] for k in keys]
+    with get_connection() as conn:
+        conn.row_factory = dict_row
+        rows = conn.execute(
+            """
+            SELECT items.* FROM items
+            JOIN unnest(%s::text[], %s::text[]) AS k(source, source_id) USING (source, source_id)
+            """,
+            (sources, ids),
+        ).fetchall()
+        return {(r["source"], r["source_id"]): dict(r) for r in rows}
+
+
+def get_tags_for_keys(keys: list[tuple[str, str]]) -> dict:
+    """一次查回多個項目的標籤，回傳 (source, source_id) -> [{tag, score}, ...]（分數高到低）。"""
+    if not keys:
+        return {}
+    sources, ids = [k[0] for k in keys], [k[1] for k in keys]
+    result: dict = {k: [] for k in keys}
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT item_tags.source, item_tags.source_id, tag, score FROM item_tags
+            JOIN unnest(%s::text[], %s::text[]) AS k(source, source_id) USING (source, source_id)
+            ORDER BY score DESC
+            """,
+            (sources, ids),
+        ).fetchall()
+    for source, source_id, tag, score in rows:
+        result.setdefault((source, source_id), []).append({"tag": tag, "score": score})
+    return result
 
 
 def get_items(source: str | None = None, tag: str | None = None, limit: int = 50, offset: int = 0) -> list[dict]:

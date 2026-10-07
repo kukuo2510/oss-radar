@@ -14,9 +14,11 @@
 """
 
 import argparse
+import msvcrt
 import sys
 import time
 import traceback
+from pathlib import Path
 
 import db
 import reader_fetch
@@ -70,6 +72,17 @@ def main() -> int:
     ap.add_argument("--model", default=reader_translate.DEFAULT_MODEL)
     ap.add_argument("--no-narrate", action="store_true", help="不補寫推薦理由")
     args = ap.parse_args()
+
+    # 同一台電腦同時只跑一個 worker：排程剛好在手動執行時觸發的話，兩個會搶同一篇、
+    # 還會把對方正在翻的項目當成「中斷」放回佇列。用檔案鎖擋掉第二個。
+    lock_path = Path(__file__).resolve().parent.parent / "data" / "reader" / "worker.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_file = open(lock_path, "a+")
+    try:
+        msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+    except OSError:
+        print("另一個翻譯站正在執行，這次跳過", flush=True)
+        return 0
 
     db.init_db()
     db.worker_heartbeat(args.model)

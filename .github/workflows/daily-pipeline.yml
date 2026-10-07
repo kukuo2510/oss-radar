@@ -61,7 +61,13 @@ jobs:
             echo
           done
 
+      # Off by default: it calls the paid Claude API from Render. The step, the
+      # /admin/run-step/narrate endpoint and report_agent.py are kept as an opt-in
+      # hook - to turn it back on, set ANTHROPIC_API_KEY in Render's Environment and
+      # add a repo variable ENABLE_NARRATE=true (Settings -> Secrets and variables ->
+      # Actions -> Variables).
       - name: Narrate top recommendations (LLM, report_agent.py)
+        if: vars.ENABLE_NARRATE == 'true'
         run: |
           echo "=== running step: narrate ==="
           curl -sf -X POST "${{ secrets.API_BASE_URL }}/admin/run-step/narrate" \
